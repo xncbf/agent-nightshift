@@ -34,6 +34,8 @@ interface AppState {
   setIsSubmitting: (value: boolean) => void
   layoutMode: 'editing' | 'planning' | 'executing'
   setLayoutMode: (mode: 'editing' | 'planning' | 'executing') => void
+  focusedPanel: 'prd' | 'workflow' | 'output' | null
+  setFocusedPanel: (panel: 'prd' | 'workflow' | 'output' | null) => void
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -69,7 +71,8 @@ export const useStore = create<AppState>((set, get) => ({
           activeJobId: result.jobId,
           currentPRD: '',
           isSubmitting: false,
-          layoutMode: 'planning'
+          layoutMode: 'planning',
+          focusedPanel: 'workflow'
         }))
         
         // Simulate workflow plan generation
@@ -131,7 +134,8 @@ export const useStore = create<AppState>((set, get) => ({
               }
             : j
         ),
-        layoutMode: 'executing'
+        layoutMode: 'executing',
+        focusedPanel: 'output'
       }))
     }
   },
@@ -218,5 +222,7 @@ export const useStore = create<AppState>((set, get) => ({
   isSubmitting: false,
   setIsSubmitting: (value) => set({ isSubmitting: value }),
   layoutMode: 'editing',
-  setLayoutMode: (mode) => set({ layoutMode: mode })
+  setLayoutMode: (mode) => set({ layoutMode: mode }),
+  focusedPanel: null,
+  setFocusedPanel: (panel) => set({ focusedPanel: panel })
 }))

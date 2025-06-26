@@ -7,7 +7,7 @@ import { LayoutTransition } from './components/LayoutTransition'
 import { useStore } from './store/useStore'
 
 function App() {
-  const { updateJob, layoutMode } = useStore()
+  const { updateJob, layoutMode, focusedPanel, setFocusedPanel } = useStore()
 
   useEffect(() => {
     // Set up IPC listeners for job updates
@@ -85,7 +85,7 @@ function App() {
     <div className="h-screen flex flex-col" style={{ backgroundColor: 'var(--color-nightshift-dark)' }}>
       {/* Title Bar */}
       <header className="h-12 flex items-center justify-between px-4 drag-region" style={{ backgroundColor: 'var(--color-nightshift-darker)', borderBottom: '1px solid var(--color-nightshift-light)' }}>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 ml-16">
           <span className="text-2xl">🌙</span>
           <h1 className="text-lg font-semibold">Claude Code Nightshift</h1>
         </div>
@@ -112,12 +112,20 @@ function App() {
       <main className="flex-1 flex overflow-hidden">
         {/* PRD Editor Panel */}
         <section 
-          className={`layout-panel p-6 ${
+          className={`layout-panel p-6 cursor-pointer transition-all duration-300 ${
+            focusedPanel === 'prd' ? 'panel-maximized' :
             layoutMode === 'editing' ? 'panel-large' :
             layoutMode === 'planning' ? 'panel-medium-small' :
             'panel-small'
           }`}
           style={{ borderRight: '1px solid var(--color-nightshift-light)' }}
+          onClick={(e) => {
+            // Focus when clicking on the panel, but not on buttons
+            const target = e.target as HTMLElement
+            if (!target.closest('button, a, [role="button"]')) {
+              setFocusedPanel('prd')
+            }
+          }}
         >
           <div className="layout-panel-content h-full">
             <PRDEditor />
@@ -126,12 +134,20 @@ function App() {
 
         {/* Workflow Status Panel */}
         <section 
-          className={`layout-panel p-6 ${
+          className={`layout-panel p-6 cursor-pointer transition-all duration-300 ${
+            focusedPanel === 'workflow' ? 'panel-maximized' :
             layoutMode === 'editing' ? 'panel-medium-small' :
             layoutMode === 'planning' ? 'panel-full' :
             'panel-medium'
           }`}
           style={{ borderRight: '1px solid var(--color-nightshift-light)' }}
+          onClick={(e) => {
+            // Focus when clicking on the panel, but not on buttons
+            const target = e.target as HTMLElement
+            if (!target.closest('button, a, [role="button"]')) {
+              setFocusedPanel('workflow')
+            }
+          }}
         >
           <div className="layout-panel-content h-full">
             <WorkflowStatus />
@@ -140,11 +156,19 @@ function App() {
 
         {/* Live Output Panel */}
         <section 
-          className={`layout-panel p-6 ${
+          className={`layout-panel p-6 cursor-pointer transition-all duration-300 ${
+            focusedPanel === 'output' ? 'panel-maximized' :
             layoutMode === 'editing' ? 'panel-medium-small' :
             layoutMode === 'planning' ? 'panel-medium-small' :
             'panel-medium'
           }`}
+          onClick={(e) => {
+            // Focus when clicking on the panel, but not on buttons
+            const target = e.target as HTMLElement
+            if (!target.closest('button, a, [role="button"]')) {
+              setFocusedPanel('output')
+            }
+          }}
         >
           <div className="layout-panel-content h-full">
             <LiveOutput />

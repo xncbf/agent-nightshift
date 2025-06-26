@@ -96,7 +96,7 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto space-y-2">
+      <div className="flex-1 overflow-auto space-y-2 pr-4">
         {workflowPlan.nodes.map((node, index) => (
           <div
             key={node.id}

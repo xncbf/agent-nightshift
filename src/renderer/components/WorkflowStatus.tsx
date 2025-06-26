@@ -55,7 +55,7 @@ export const WorkflowStatus: React.FC = () => {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
         </svg>
         <p className="text-lg">No active job</p>
-        <p className="text-sm mt-2">Submit a PRD to get started</p>
+        <p className="text-sm mt-2">Describe your idea to get started</p>
       </div>
     )
   }
@@ -118,7 +118,10 @@ export const WorkflowStatus: React.FC = () => {
           
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setViewMode('dag')}
+              onClick={(e) => {
+                e.stopPropagation()
+                setViewMode('dag')
+              }}
               className="p-2 rounded-lg transition-colors"
               style={{
                 backgroundColor: viewMode === 'dag' ? 'var(--color-nightshift-accent)' : 'var(--color-nightshift-darker)',
@@ -129,7 +132,10 @@ export const WorkflowStatus: React.FC = () => {
               <Network className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setViewMode('list')}
+              onClick={(e) => {
+                e.stopPropagation()
+                setViewMode('list')
+              }}
               className="p-2 rounded-lg transition-colors"
               style={{
                 backgroundColor: viewMode === 'list' ? 'var(--color-nightshift-accent)' : 'var(--color-nightshift-darker)',
@@ -141,7 +147,10 @@ export const WorkflowStatus: React.FC = () => {
             </button>
             {(activeJob?.status === 'running' || activeJob?.status === 'paused') && (
               <button
-                onClick={() => setViewMode('progress')}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setViewMode('progress')
+                }}
                 className="p-2 rounded-lg transition-colors"
                 style={{
                   backgroundColor: viewMode === 'progress' ? 'var(--color-nightshift-accent)' : 'var(--color-nightshift-darker)',
@@ -166,7 +175,10 @@ export const WorkflowStatus: React.FC = () => {
         {activeJob.status === 'ready' && (
           <div className="flex items-center gap-3 mt-3">
             <button
-              onClick={handleApprove}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleApprove()
+              }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
               style={{ 
                 backgroundColor: 'var(--color-nightshift-success)', 
@@ -177,7 +189,10 @@ export const WorkflowStatus: React.FC = () => {
               Approve & Execute
             </button>
             <button
-              onClick={handleReject}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleReject()
+              }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
               style={{ 
                 backgroundColor: 'var(--color-nightshift-error)', 

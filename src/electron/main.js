@@ -5,10 +5,10 @@ let mainWindow
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1200,
-    minHeight: 700,
+    width: 1520,
+    height: 980,
+    minWidth: 1300,
+    minHeight: 800,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

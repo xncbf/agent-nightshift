@@ -52,7 +52,7 @@ export const LiveOutput: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 rounded-lg p-4 overflow-auto font-mono text-sm" style={{ backgroundColor: 'var(--color-nightshift-darker)' }}>
+      <div className="flex-1 rounded-lg p-4 overflow-auto font-mono text-sm pr-4" style={{ backgroundColor: 'var(--color-nightshift-darker)' }}>
         {activeJob.logs.map((log, index) => (
           <div key={index} className="mb-1">
             <span className="text-gray-500 mr-2">

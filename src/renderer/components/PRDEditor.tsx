@@ -19,23 +19,29 @@ export const PRDEditor: React.FC = () => {
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold">PRD Editor</h2>
+        <h2 className="text-xl font-semibold">💡 Describe Your Idea</h2>
         <div className="flex items-center gap-2">
           {(layoutMode === 'planning' || layoutMode === 'executing') && (
             <button
-              onClick={handleNewPRD}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleNewPRD()
+              }}
               className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors btn-secondary"
             >
               <Plus className="w-4 h-4" />
-              New PRD
+New Plan
             </button>
           )}
           <button
-            onClick={handleSubmit}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleSubmit()
+            }}
             disabled={!currentPRD.trim() || isSubmitting}
             className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSubmitting ? 'Submitting...' : 'Submit PRD'}
+{isSubmitting ? 'Creating Plan...' : '🎯 Create Plan'}
           </button>
         </div>
       </div>
@@ -44,12 +50,14 @@ export const PRDEditor: React.FC = () => {
         <textarea
           value={currentPRD}
           onChange={(e) => setCurrentPRD(e.target.value)}
-          placeholder="# My App
+          placeholder="# My App Idea
 
-Create a React app with the following features:
+I want to create a React app with:
 - User authentication
-- Dashboard with charts
+- Dashboard with charts  
 - Dark mode support
+- Responsive design
+- Real-time notifications
 ..."
           className="flex-1 w-full p-4 rounded-lg resize-none focus:outline-none font-mono text-sm"
           style={{
@@ -63,7 +71,7 @@ Create a React app with the following features:
       </div>
       
       <div className="mt-4 text-xs text-gray-500">
-        <p>Tip: Write clear, structured PRDs for best results</p>
+        <p>Tip: Describe your idea clearly for better planning results</p>
       </div>
     </div>
   )

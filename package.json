@@ -1,0 +1,71 @@
+{
+  "name": "claude-code-nightshift",
+  "version": "1.0.0",
+  "description": "Claude Code Nightshift - AI-powered overnight development tool",
+  "main": "src/electron/main.js",
+  "scripts": {
+    "start": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "dev": "vite",
+    "build": "vite build",
+    "electron": "electron .",
+    "dist": "npm run build && electron-builder",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "keywords": [
+    "electron",
+    "react",
+    "ai",
+    "claude",
+    "development"
+  ],
+  "author": "CCN Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.11",
+    "@types/node": "^24.0.4",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.2.0",
+    "electron": "^37.1.0",
+    "electron-builder": "^26.0.12",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0",
+    "wait-on": "^8.0.3"
+  },
+  "dependencies": {
+    "@radix-ui/themes": "^3.2.1",
+    "@xyflow/react": "^12.7.1",
+    "clsx": "^2.1.1",
+    "d3": "^7.9.0",
+    "lucide-react": "^0.523.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwind-merge": "^3.3.1",
+    "zustand": "^5.0.5"
+  },
+  "build": {
+    "appId": "com.ccn.nightshift",
+    "productName": "Claude Code Nightshift",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src/electron/**/*",
+      "node_modules/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}

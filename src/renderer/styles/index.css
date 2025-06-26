@@ -1,0 +1,140 @@
+@import "./tailwind.css";
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-nightshift-dark);
+    color: #f3f4f6;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 0.5rem;
+  }
+
+  ::-webkit-scrollbar-track {
+    background-color: var(--color-nightshift-darker);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-nightshift-light);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-nightshift-accent);
+  }
+}
+
+@layer components {
+  .panel {
+    background-color: var(--color-nightshift-darker);
+    border: 1px solid var(--color-nightshift-light);
+    border-radius: 0.5rem;
+    padding: 1rem;
+  }
+
+  .btn-primary {
+    background-color: var(--color-nightshift-accent);
+    color: white;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    transition: background-color 0.15s;
+  }
+  
+  .btn-primary:hover {
+    background-color: #2563eb;
+  }
+
+  .btn-secondary {
+    background-color: var(--color-nightshift-light);
+    color: #f3f4f6;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    transition: background-color 0.15s;
+  }
+  
+  .btn-secondary:hover {
+    background-color: #374151;
+  }
+
+  .status-active {
+    color: var(--color-nightshift-success);
+  }
+
+  .status-thinking {
+    color: var(--color-nightshift-warning);
+  }
+
+  .status-stuck {
+    color: var(--color-nightshift-error);
+  }
+
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+
+  .drag-region button,
+  .drag-region input,
+  .drag-region a {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Layout transitions */
+  .layout-panel {
+    transition: flex 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+                min-width 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+                max-width 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.3s ease;
+    overflow: hidden;
+    will-change: flex, min-width, max-width;
+  }
+
+  .layout-panel:hover {
+    box-shadow: 0 4px 20px rgba(74, 95, 216, 0.1);
+  }
+
+  .layout-panel-content {
+    transition: opacity 0.4s ease-in-out 0.15s,
+                transform 0.4s ease-in-out 0.15s;
+    transform: translateZ(0); /* Force hardware acceleration */
+  }
+
+  /* Responsive panel adjustments */
+  @media (max-width: 1200px) {
+    .panel-large {
+      max-width: 600px;
+    }
+  }
+
+  /* Smooth width transitions */
+  .panel-small {
+    flex: 0 0 20%;
+    min-width: 200px;
+  }
+
+  .panel-medium-small {
+    flex: 0 0 25%;
+    min-width: 250px;
+  }
+
+  .panel-medium {
+    flex: 0 0 40%;
+    min-width: 350px;
+  }
+
+  .panel-large {
+    flex: 1;
+    max-width: 800px;
+  }
+
+  .panel-full {
+    flex: 1;
+  }
+}

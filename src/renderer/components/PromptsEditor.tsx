@@ -3,7 +3,7 @@ import { useStore } from '../store/useStore'
 import { Send, Plus, X, AlertCircle } from 'lucide-react'
 
 export const PromptsEditor: React.FC = () => {
-  const { isSubmitting, setIsSubmitting, addJob, isAIConfigured, aiProvider, jobs, currentPRD, setCurrentPRD } = useStore()
+  const { isSubmitting, setIsSubmitting, addJob, isAIConfigured, aiProvider, jobs, currentPRD, setCurrentPRD, createManualPlan } = useStore()
   const [content, setContent] = useState(currentPRD)
   
   const planningJob = jobs.find(job => job.status === 'planning')
@@ -13,13 +13,19 @@ export const PromptsEditor: React.FC = () => {
     if (!content.trim()) return
     
     if (!isAIConfigured) {
-      const providerName = aiProvider === 'openai' ? 'OpenAI API key' : 'Claude Code'
+      const providerName = aiProvider === 'openai' ? 'OpenAI API key' : 'Claude API key'
       alert(`Please configure ${providerName} first!`)
       return
     }
     
     await addJob(content.trim())
     // Don't clear content so user can see what they submitted
+  }
+
+  const handleManualPlan = async () => {
+    if (!content.trim()) return
+    
+    await createManualPlan(content.trim())
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -98,9 +104,23 @@ export const PromptsEditor: React.FC = () => {
            isPlanning ? 'Stop & Create New Plan' : 
            'Create Plan'}
         </button>
-        <div className="text-sm text-gray-500 flex items-center">
-          Press {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter
-        </div>
+        <button
+          onClick={handleManualPlan}
+          disabled={isSubmitting || !content.trim()}
+          className="px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
+          style={{
+            backgroundColor: 'var(--color-nightshift-light)',
+            border: '1px solid var(--color-nightshift-accent)',
+            color: 'white'
+          }}
+          title="Create a manual workflow plan that you can edit"
+        >
+          <Plus className="w-4 h-4" />
+          Manual Plan
+        </button>
+      </div>
+      <div className="text-sm text-gray-500 text-center mt-2">
+        Press {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter for AI plan • Manual plan lets you create and edit tasks yourself
       </div>
     </div>
   )

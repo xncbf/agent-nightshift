@@ -19,6 +19,13 @@ export const WorkflowStatus: React.FC = () => {
 
   const [viewMode, setViewMode] = useState<'dag' | 'list' | 'progress'>(getDefaultViewMode())
 
+  // Reset to DAG view when a new job is created
+  React.useEffect(() => {
+    if (activeJobId) {
+      setViewMode('dag')
+    }
+  }, [activeJobId])
+
   // Don't auto-switch view mode - let user control it
   // React.useEffect(() => {
   //   if ((activeJob?.status === 'running' || activeJob?.status === 'paused') && viewMode !== 'progress') {

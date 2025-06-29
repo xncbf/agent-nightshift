@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { TaskNode, WorkflowPlan } from '../types/workflow'
-import { Trash2, Save, X } from 'lucide-react'
+import { Trash2, Save, X, Plus } from 'lucide-react'
 
 interface PlanEditorProps {
   workflowPlan: WorkflowPlan
@@ -69,6 +69,78 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
     onPlanUpdate(updatedPlan)
   }
 
+  const handleAddTask = () => {
+    const taskNodes = workflowPlan.nodes.filter(n => n.type === 'task')
+    const newTaskId = `task${taskNodes.length + 1}`
+    const newTaskNumber = taskNodes.length + 1
+    
+    // Find the end node to update its dependencies
+    const endNodeIndex = workflowPlan.nodes.findIndex(n => n.type === 'end')
+    const lastTaskNode = taskNodes[taskNodes.length - 1]
+    
+    const newTask: TaskNode = {
+      id: newTaskId,
+      title: `Task ${newTaskNumber}`,
+      description: `New task ${newTaskNumber} - click to edit`,
+      type: 'task',
+      status: 'pending',
+      position: { x: 100, y: 250 + (newTaskNumber - 1) * 150 },
+      duration: 10,
+      dependencies: lastTaskNode ? [lastTaskNode.id] : ['start']
+    }
+
+    // Update nodes
+    const updatedNodes = [...workflowPlan.nodes]
+    
+    // Insert new task before end node
+    if (endNodeIndex !== -1) {
+      updatedNodes.splice(endNodeIndex, 0, newTask)
+      // Update end node dependencies
+      updatedNodes[endNodeIndex + 1] = {
+        ...updatedNodes[endNodeIndex + 1],
+        dependencies: [newTaskId]
+      }
+    } else {
+      updatedNodes.push(newTask)
+    }
+
+    // Update edges
+    const updatedEdges = [...workflowPlan.edges]
+    
+    // Remove old edge to end node if it exists
+    if (lastTaskNode && endNodeIndex !== -1) {
+      const oldEdgeIndex = updatedEdges.findIndex(e => e.source === lastTaskNode.id && e.target === 'end')
+      if (oldEdgeIndex !== -1) {
+        updatedEdges.splice(oldEdgeIndex, 1)
+      }
+    }
+    
+    // Add new edges
+    const sourceId = lastTaskNode ? lastTaskNode.id : 'start'
+    updatedEdges.push({ id: `${sourceId}-${newTaskId}`, source: sourceId, target: newTaskId })
+    
+    if (endNodeIndex !== -1) {
+      updatedEdges.push({ id: `${newTaskId}-end`, source: newTaskId, target: 'end' })
+    }
+
+    const updatedPlan = {
+      ...workflowPlan,
+      nodes: updatedNodes,
+      edges: updatedEdges,
+      estimatedDuration: workflowPlan.estimatedDuration + 10
+    }
+
+    onPlanUpdate(updatedPlan)
+    
+    // Start editing the new task
+    setEditingNodeId(newTaskId)
+    setEditForm({
+      title: newTask.title,
+      description: newTask.description,
+      dependencies: newTask.dependencies
+    })
+  }
+
   const getStatusBadge = (status: string) => {
     const colors = {
       pending: '#6b7280',
@@ -93,9 +165,23 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
   return (
     <div className="h-full flex flex-col">
       <div className="mb-4">
-        <h3 className="text-lg font-semibold mb-2">Task Plan</h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-lg font-semibold">Task Plan</h3>
+          <button
+            onClick={handleAddTask}
+            className="flex items-center gap-2 px-3 py-1 rounded-md text-sm transition-colors"
+            style={{
+              backgroundColor: 'var(--color-nightshift-accent)',
+              color: 'white'
+            }}
+            title="Add new task"
+          >
+            <Plus className="w-4 h-4" />
+            Add Task
+          </button>
+        </div>
         <div className="text-sm text-gray-400 mb-2">
-          {workflowPlan.nodes.length} tasks • Est. {workflowPlan.estimatedDuration} minutes
+          {workflowPlan.nodes.filter(n => n.type === 'task').length} tasks • Est. {workflowPlan.estimatedDuration} minutes
         </div>
       </div>
 

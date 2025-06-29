@@ -30,6 +30,7 @@ interface AppState {
   resumeJob: (jobId: string) => void
   stopJob: (jobId: string) => void
   cancelPlanGeneration: (jobId: string) => void
+  createManualPlan: (prd: string) => Promise<string>
   
   // UI State
   isSubmitting: boolean
@@ -474,6 +475,84 @@ export const useStore = create<AppState>((set, get) => {
         return { jobs: updatedJobs }
       })
     }
+  },
+
+  createManualPlan: async (prd) => {
+    const jobId = `manual-${Date.now()}`
+    
+    // Create a basic manual workflow plan
+    const nodes = [
+      {
+        id: 'start',
+        title: 'Start',
+        description: 'Workflow start',
+        type: 'start' as const,
+        status: 'completed' as const,
+        position: { x: 100, y: 100 },
+        dependencies: []
+      },
+      {
+        id: 'task1',
+        title: 'Task 1',
+        description: 'First task - click to edit',
+        type: 'task' as const,
+        status: 'pending' as const,
+        position: { x: 100, y: 250 },
+        duration: 10,
+        dependencies: ['start']
+      },
+      {
+        id: 'end',
+        title: 'Complete',
+        description: 'All tasks completed',
+        type: 'end' as const,
+        status: 'pending' as const,
+        position: { x: 100, y: 400 },
+        dependencies: ['task1']
+      }
+    ]
+
+    const edges = [
+      { id: 'start-task1', source: 'start', target: 'task1' },
+      { id: 'task1-end', source: 'task1', target: 'end' }
+    ]
+
+    const manualPlan = {
+      id: `manual-workflow-${Date.now()}`,
+      name: 'Manual Workflow',
+      description: 'Manually created workflow plan',
+      nodes,
+      edges,
+      status: 'draft' as const,
+      createdAt: new Date(),
+      estimatedDuration: 10
+    }
+
+    const newJob = {
+      id: jobId,
+      prd,
+      status: 'ready' as const,
+      progress: 0,
+      currentTask: 'Manual workflow plan ready for review',
+      logs: ['📝 Manual workflow plan created', '⏳ Ready for review and execution'],
+      createdAt: new Date(),
+      workflowPlan: manualPlan
+    }
+
+    set(state => {
+      const updatedJobs = [...state.jobs, newJob]
+      localStorage.setItem('jobs', JSON.stringify(updatedJobs))
+      localStorage.setItem('active_job_id', jobId)
+      
+      return {
+        jobs: updatedJobs,
+        activeJobId: jobId,
+        layoutMode: 'planning' as const,
+        focusedPanel: 'workflow' as const
+      }
+    })
+
+    return jobId
   },
   
   // UI State

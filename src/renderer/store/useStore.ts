@@ -12,6 +12,7 @@ interface Job {
   workflowPlan?: WorkflowPlan
 }
 
+
 interface AppState {
   // PRD Editor
   currentPRD: string
@@ -36,9 +37,25 @@ interface AppState {
   setLayoutMode: (mode: 'editing' | 'planning' | 'executing') => void
   focusedPanel: 'prd' | 'workflow' | 'output' | null
   setFocusedPanel: (panel: 'prd' | 'workflow' | 'output' | null) => void
+  
+  // AI Configuration
+  aiProvider: 'openai' | 'claude-code'
+  setAiProvider: (provider: 'openai' | 'claude-code') => void
+  openaiModel: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo'
+  setOpenaiModel: (model: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo') => void
+  openaiApiKey: string
+  setOpenaiApiKey: (key: string) => void
+  isOpenaiConfigured: boolean
+  isAIConfigured: boolean
 }
 
-export const useStore = create<AppState>((set, get) => ({
+export const useStore = create<AppState>((set, get) => {
+  // Load saved preferences from localStorage
+  const savedApiKey = localStorage.getItem('openai_api_key') || ''
+  const savedProvider = (localStorage.getItem('ai_provider') as 'openai' | 'claude-code') || 'openai'
+  const savedModel = (localStorage.getItem('openai_model') as 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo') || 'gpt-4o-mini'
+  
+  return {
   // PRD Editor
   currentPRD: '',
   setCurrentPRD: (prd) => set({ currentPRD: prd }),
@@ -75,13 +92,32 @@ export const useStore = create<AppState>((set, get) => ({
           focusedPanel: 'workflow'
         }))
         
-        // Simulate workflow plan generation
+        // Generate workflow plan with WorkflowAI
         setTimeout(async () => {
-          const { ClaudeCodeService } = await import('../services/claudeCodeService')
-          const service = new ClaudeCodeService()
+          const { WorkflowAI } = await import('../services/workflowAI')
+          
+          // Create a log function that updates the job's logs
+          const addLogToJob = (log: string) => {
+            set(state => ({
+              jobs: state.jobs.map(job => 
+                job.id === result.jobId 
+                  ? { ...job, logs: [...job.logs, log] } 
+                  : job
+              )
+            }))
+          }
+          
+          // Get current AI provider settings
+          const currentState = get()
+          const workflowAI = new WorkflowAI(
+            addLogToJob, 
+            currentState.aiProvider, 
+            currentState.openaiModel
+          )
           
           try {
-            const workflowPlan = await service.analyzePRD(prd)
+            // AI will automatically detect if it's single or multiple prompts
+            const workflowPlan = await workflowAI.analyzeContentAndGenerateWorkflow(prd)
             
             set(state => ({
               jobs: state.jobs.map(job => 
@@ -91,13 +127,26 @@ export const useStore = create<AppState>((set, get) => ({
                       workflowPlan,
                       status: 'ready',
                       currentTask: 'Workflow plan ready for review. Please approve to start execution.',
-                      logs: [...job.logs, '✓ Workflow plan generated', `> Found ${workflowPlan.nodes.length} tasks to execute`, '⏳ Waiting for approval...']
+                      logs: [...job.logs, '⏳ Waiting for approval...']
                     } 
                   : job
               )
             }))
           } catch (error) {
             console.error('Failed to generate workflow plan:', error)
+            const errorMessage = error instanceof Error ? error.message : String(error)
+            set(state => ({
+              jobs: state.jobs.map(job => 
+                job.id === result.jobId 
+                  ? { 
+                      ...job, 
+                      status: 'failed',
+                      currentTask: 'Failed to generate workflow plan',
+                      logs: [...job.logs, `❌ Failed to generate workflow plan: ${errorMessage}`]
+                    } 
+                  : job
+              )
+            }))
           }
         }, 1000)
         
@@ -119,7 +168,7 @@ export const useStore = create<AppState>((set, get) => ({
   
   setActiveJob: (id) => set({ activeJobId: id }),
   
-  approveWorkflowPlan: (jobId) => {
+  approveWorkflowPlan: async (jobId) => {
     const { jobs } = get()
     const job = jobs.find(j => j.id === jobId)
     if (job && job.status === 'ready') {
@@ -137,6 +186,33 @@ export const useStore = create<AppState>((set, get) => ({
         layoutMode: 'executing',
         focusedPanel: 'output'
       }))
+
+      // Execute the workflow with Claude Code CLI (if available)
+      try {
+        console.log('Starting Claude Code execution for job:', jobId)
+        // Note: executeWorkflow may not be implemented yet in Electron API
+        if ((window.electronAPI as any).executeWorkflow) {
+          const result = await window.electronAPI.executeWorkflow(jobId, job.prd)
+          console.log('Claude Code execution started:', result)
+        } else {
+          console.log('executeWorkflow not implemented yet - using simulation')
+        }
+      } catch (error) {
+        console.error('Failed to start Claude Code execution:', error)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        set(state => ({
+          jobs: state.jobs.map(j => 
+            j.id === jobId 
+              ? { 
+                  ...j, 
+                  status: 'failed',
+                  currentTask: 'Failed to start execution',
+                  logs: [...j.logs, `❌ Execution failed: ${errorMessage}`]
+                }
+              : j
+          )
+        }))
+      }
     }
   },
   
@@ -160,61 +236,131 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  pauseJob: (jobId) => {
+  pauseJob: async (jobId) => {
     const { jobs } = get()
     const job = jobs.find(j => j.id === jobId)
     if (job && job.status === 'running') {
-      set(state => ({
-        jobs: state.jobs.map(j => 
-          j.id === jobId 
-            ? { 
-                ...j, 
-                status: 'paused',
-                currentTask: 'Execution paused by user',
-                logs: [...j.logs, '⏸️ Execution paused']
-              }
-            : j
-        )
-      }))
+      try {
+        if ((window.electronAPI as any).pauseJob) {
+          const result = await window.electronAPI.pauseJob(jobId)
+          if (result.success) {
+            set(state => ({
+              jobs: state.jobs.map(j => 
+                j.id === jobId 
+                  ? { 
+                      ...j, 
+                      status: 'paused',
+                      currentTask: 'Execution paused by user',
+                      logs: [...j.logs, '⏸️ Execution paused']
+                    }
+                  : j
+              )
+            }))
+          }
+        } else {
+          // Fallback - just update the status
+          set(state => ({
+            jobs: state.jobs.map(j => 
+              j.id === jobId 
+                ? { 
+                    ...j, 
+                    status: 'paused',
+                    currentTask: 'Execution paused by user',
+                    logs: [...j.logs, '⏸️ Execution paused']
+                  }
+                : j
+            )
+          }))
+        }
+      } catch (error) {
+        console.error('Failed to pause job:', error)
+      }
     }
   },
 
-  resumeJob: (jobId) => {
+  resumeJob: async (jobId) => {
     const { jobs } = get()
     const job = jobs.find(j => j.id === jobId)
     if (job && job.status === 'paused') {
-      set(state => ({
-        jobs: state.jobs.map(j => 
-          j.id === jobId 
-            ? { 
-                ...j, 
-                status: 'running',
-                currentTask: 'Resuming execution...',
-                logs: [...j.logs, '▶️ Execution resumed']
-              }
-            : j
-        )
-      }))
+      try {
+        if ((window.electronAPI as any).resumeJob) {
+          const result = await window.electronAPI.resumeJob(jobId)
+          if (result.success) {
+            set(state => ({
+              jobs: state.jobs.map(j => 
+                j.id === jobId 
+                  ? { 
+                      ...j, 
+                      status: 'running',
+                      currentTask: 'Resuming execution...',
+                      logs: [...j.logs, '▶️ Execution resumed']
+                    }
+                  : j
+              )
+            }))
+          }
+        } else {
+          // Fallback - just update the status
+          set(state => ({
+            jobs: state.jobs.map(j => 
+              j.id === jobId 
+                ? { 
+                    ...j, 
+                    status: 'running',
+                    currentTask: 'Resuming execution...',
+                    logs: [...j.logs, '▶️ Execution resumed']
+                  }
+                : j
+            )
+          }))
+        }
+      } catch (error) {
+        console.error('Failed to resume job:', error)
+      }
     }
   },
 
-  stopJob: (jobId) => {
+  stopJob: async (jobId) => {
     const { jobs } = get()
     const job = jobs.find(j => j.id === jobId)
     if (job && (job.status === 'running' || job.status === 'paused')) {
-      set(state => ({
-        jobs: state.jobs.map(j => 
-          j.id === jobId 
-            ? { 
-                ...j, 
-                status: 'failed',
-                currentTask: 'Execution stopped by user',
-                logs: [...j.logs, '⏹️ Execution stopped']
-              }
-            : j
-        ),
-        layoutMode: 'editing'
-      }))
+      try {
+        if ((window.electronAPI as any).stopJob) {
+          const result = await window.electronAPI.stopJob(jobId)
+          if (result.success) {
+            set(state => ({
+              jobs: state.jobs.map(j => 
+                j.id === jobId 
+                  ? { 
+                      ...j, 
+                      status: 'failed',
+                      currentTask: 'Execution stopped by user',
+                      logs: [...j.logs, '⏹️ Execution stopped']
+                    }
+                  : j
+              ),
+              layoutMode: 'editing'
+            }))
+          }
+        } else {
+          // Fallback - just update the status
+          set(state => ({
+            jobs: state.jobs.map(j => 
+              j.id === jobId 
+                ? { 
+                    ...j, 
+                    status: 'failed',
+                    currentTask: 'Execution stopped by user',
+                    logs: [...j.logs, '⏹️ Execution stopped']
+                  }
+                : j
+            ),
+            layoutMode: 'editing'
+          }))
+        }
+      } catch (error) {
+        console.error('Failed to stop job:', error)
+      }
     }
   },
   
@@ -224,5 +370,41 @@ export const useStore = create<AppState>((set, get) => ({
   layoutMode: 'editing',
   setLayoutMode: (mode) => set({ layoutMode: mode }),
   focusedPanel: null,
-  setFocusedPanel: (panel) => set({ focusedPanel: panel })
-}))
+  setFocusedPanel: (panel) => set({ focusedPanel: panel }),
+  
+  // AI Configuration
+  aiProvider: savedProvider,
+  setAiProvider: (provider: 'openai' | 'claude-code') => {
+    set({ aiProvider: provider })
+    localStorage.setItem('ai_provider', provider)
+    
+    // Update isAIConfigured
+    const state = get()
+    set({ isAIConfigured: provider === 'claude-code' || (provider === 'openai' && !!state.openaiApiKey) })
+  },
+  openaiModel: savedModel,
+  setOpenaiModel: (model: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo') => {
+    set({ openaiModel: model })
+    localStorage.setItem('openai_model', model)
+  },
+  
+  // OpenAI API
+  openaiApiKey: savedApiKey,
+  setOpenaiApiKey: (key) => {
+    set({ openaiApiKey: key, isOpenaiConfigured: !!key })
+    // Save to localStorage
+    if (key) {
+      localStorage.setItem('openai_api_key', key)
+    } else {
+      localStorage.removeItem('openai_api_key')
+    }
+    // Update isAIConfigured
+    const state = get()
+    set({ isAIConfigured: state.aiProvider === 'claude-code' || (state.aiProvider === 'openai' && !!key) })
+  },
+  isOpenaiConfigured: !!savedApiKey,
+  
+  // Computed state
+  isAIConfigured: savedProvider === 'claude-code' || (savedProvider === 'openai' && !!savedApiKey)
+  }
+})

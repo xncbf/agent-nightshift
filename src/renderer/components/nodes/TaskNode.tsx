@@ -57,6 +57,7 @@ export const TaskNode: React.FC<TaskNodeProps> = ({ data }) => {
       border: '2px solid',
       cursor: 'pointer',
       transition: 'all 0.2s ease',
+      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
     }
 
     if (data.status === 'running') {
@@ -82,13 +83,23 @@ export const TaskNode: React.FC<TaskNodeProps> = ({ data }) => {
 
     return {
       ...baseStyle,
-      borderColor: 'var(--color-nightshift-light)',
+      borderColor: '#6b7280',
+      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
     }
   }
 
   return (
     <>
-      <Handle type="target" position={Position.Top} style={{ backgroundColor: 'var(--color-nightshift-accent)' }} />
+      <Handle 
+        type="target" 
+        position={Position.Top} 
+        style={{ 
+          backgroundColor: 'var(--color-nightshift-accent)',
+          width: '12px',
+          height: '12px',
+          border: '2px solid white'
+        }} 
+      />
       
       <div 
         style={getNodeStyle()}
@@ -100,7 +111,7 @@ export const TaskNode: React.FC<TaskNodeProps> = ({ data }) => {
         }}
         onMouseLeave={(e) => {
           if (data.status === 'pending') {
-            e.currentTarget.style.borderColor = 'var(--color-nightshift-light)'
+            e.currentTarget.style.borderColor = '#6b7280'
           }
         }}
       >
@@ -128,7 +139,16 @@ export const TaskNode: React.FC<TaskNodeProps> = ({ data }) => {
         )}
       </div>
       
-      <Handle type="source" position={Position.Bottom} style={{ backgroundColor: 'var(--color-nightshift-accent)' }} />
+      <Handle 
+        type="source" 
+        position={Position.Bottom} 
+        style={{ 
+          backgroundColor: 'var(--color-nightshift-accent)',
+          width: '12px',
+          height: '12px',
+          border: '2px solid white'
+        }} 
+      />
     </>
   )
 }

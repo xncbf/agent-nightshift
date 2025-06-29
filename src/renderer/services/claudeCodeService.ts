@@ -1,13 +1,25 @@
 import { WorkflowPlan, TaskNode, TaskEdge } from '../types/workflow'
+import { WorkflowAI } from './workflowAI'
 
-// Mock Claude Code MCP service
+// Enhanced Claude Code MCP service with AI integration
 export class ClaudeCodeService {
+  private workflowAI: WorkflowAI
+
+  constructor() {
+    this.workflowAI = new WorkflowAI()
+  }
+
   async analyzePRD(prd: string): Promise<WorkflowPlan> {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    // Generate a workflow plan based on PRD content
-    return this.generateWorkflowPlan(prd)
+    try {
+      // Use AI-powered workflow generation
+      const aiWorkflow = await this.workflowAI.analyzePRDAndGenerateWorkflow(prd)
+      return aiWorkflow
+    } catch (error) {
+      console.error('AI workflow generation failed, using fallback:', error)
+      // Fallback to rule-based generation
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      return this.generateWorkflowPlan(prd)
+    }
   }
 
   private generateWorkflowPlan(prd: string): WorkflowPlan {

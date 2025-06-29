@@ -103,38 +103,55 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
             className="p-4 rounded-lg transition-all duration-200"
             style={{ 
               backgroundColor: 'var(--color-nightshift-darker)',
-              border: '1px solid var(--color-nightshift-light)'
+              border: '1px solid #6b7280',
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
             }}
           >
             {editingNodeId === node.id ? (
               // Edit mode
               <div className="space-y-3">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Title</label>
+                  <label className="block text-sm font-medium mb-1">
+                    <span className="flex items-center gap-2">
+                      📝 Task Summary
+                      <span className="text-xs text-gray-400">(one-line description for humans)</span>
+                    </span>
+                  </label>
                   <input
                     type="text"
                     value={editForm.title}
                     onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                    placeholder="e.g., Create React TypeScript Project"
                     className="w-full px-3 py-2 rounded-md border text-sm"
                     style={{
                       backgroundColor: 'var(--color-nightshift-light)',
-                      border: '1px solid var(--color-nightshift-accent)',
-                      color: '#f3f4f6'
+                      border: '2px solid var(--color-nightshift-accent)',
+                      color: '#f3f4f6',
+                      boxShadow: '0 2px 4px rgba(74, 95, 216, 0.1)'
                     }}
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Description</label>
+                  <label className="block text-sm font-medium mb-1">
+                    <span className="flex items-center gap-2">
+                      🤖 Agent Instructions
+                      <span className="text-xs text-gray-400">(detailed commands for AI to execute)</span>
+                    </span>
+                  </label>
                   <textarea
                     value={editForm.description}
                     onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                    rows={2}
-                    className="w-full px-3 py-2 rounded-md border text-sm resize-none"
+                    rows={4}
+                    placeholder="e.g., Run 'npx create-react-app task-dashboard --template typescript', install dependencies: @types/react-router-dom@5.3.3, axios@1.4.0..."
+                    className="w-full px-3 py-2 rounded-md border text-sm resize-none font-mono"
                     style={{
                       backgroundColor: 'var(--color-nightshift-light)',
-                      border: '1px solid var(--color-nightshift-accent)',
-                      color: '#f3f4f6'
+                      border: '2px solid var(--color-nightshift-accent)',
+                      color: '#f3f4f6',
+                      boxShadow: '0 2px 4px rgba(74, 95, 216, 0.1)',
+                      fontSize: '12px',
+                      lineHeight: '1.4'
                     }}
                   />
                 </div>
@@ -143,16 +160,14 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleEditSave}
-                    className="flex items-center gap-1 px-3 py-1 rounded-md text-sm transition-colors"
-                    style={{ backgroundColor: 'var(--color-nightshift-success)', color: 'white' }}
+                    className="btn-success flex items-center gap-1 text-sm"
                   >
                     <Save className="w-3 h-3" />
                     Save
                   </button>
                   <button
                     onClick={handleEditCancel}
-                    className="flex items-center gap-1 px-3 py-1 rounded-md text-sm transition-colors"
-                    style={{ backgroundColor: 'var(--color-nightshift-error)', color: 'white' }}
+                    className="btn-error flex items-center gap-1 text-sm"
                   >
                     <X className="w-3 h-3" />
                     Cancel
@@ -173,14 +188,14 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleEditStart(node)}
-                        className="p-1 rounded-md hover:bg-gray-700 transition-colors"
+                        className="p-1 rounded-md transition-colors border border-gray-600 hover:border-blue-500 hover:bg-blue-500/10"
                         title="Edit task"
                       >
                         <Edit3 className="w-3 h-3" />
                       </button>
                       <button
                         onClick={() => handleDeleteNode(node.id)}
-                        className="p-1 rounded-md hover:bg-red-900 transition-colors"
+                        className="p-1 rounded-md transition-colors border border-gray-600 hover:border-red-500 hover:bg-red-500/10"
                         title="Delete task"
                       >
                         <Trash2 className="w-3 h-3" />

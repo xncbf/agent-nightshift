@@ -1,4 +1,4 @@
-# Claude Code Nightshift (CCN)
+# Agent Nightshift  (CCN)
 
 AI-powered overnight development tool that works while you sleep.
 

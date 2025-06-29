@@ -179,11 +179,7 @@ export const WorkflowStatus: React.FC = () => {
                 e.stopPropagation()
                 handleApprove()
               }}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
-              style={{ 
-                backgroundColor: 'var(--color-nightshift-success)', 
-                color: 'white' 
-              }}
+              className="btn-success flex items-center gap-2"
             >
               <CheckCircle className="w-4 h-4" />
               Approve & Execute
@@ -193,11 +189,7 @@ export const WorkflowStatus: React.FC = () => {
                 e.stopPropagation()
                 handleReject()
               }}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
-              style={{ 
-                backgroundColor: 'var(--color-nightshift-error)', 
-                color: 'white' 
-              }}
+              className="btn-error flex items-center gap-2"
             >
               <XCircle className="w-4 h-4" />
               Reject

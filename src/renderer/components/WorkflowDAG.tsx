@@ -5,6 +5,7 @@ import {
   Edge,
   Controls,
   Background,
+  MiniMap,
   useNodesState,
   useEdgesState,
   ConnectionMode,
@@ -72,7 +73,11 @@ export const WorkflowDAG: React.FC<WorkflowDAGProps> = ({
       source: edge.source,
       target: edge.target,
       type: 'default',
-      style: { stroke: 'var(--color-nightshift-light)' },
+      style: { 
+        stroke: '#6b7280', 
+        strokeWidth: 2,
+        opacity: 0.8
+      },
       animated: edge.source === getCurrentRunningNode()?.id,
     })))
   }, [workflowEdges, setEdges])
@@ -93,17 +98,22 @@ export const WorkflowDAG: React.FC<WorkflowDAGProps> = ({
         fitView
         style={{ backgroundColor: 'transparent' }}
       >
-        <Controls 
-          style={{ 
-            backgroundColor: 'var(--color-nightshift-light)',
-            border: '1px solid var(--color-nightshift-accent)',
-            borderRadius: '8px'
-          }}
-        />
         <Background 
           color="var(--color-nightshift-light)" 
           gap={20} 
           size={1}
+        />
+        <MiniMap 
+          style={{
+            backgroundColor: 'var(--color-nightshift-darker)',
+            border: '1px solid var(--color-nightshift-light)',
+            borderRadius: '8px'
+          }}
+          nodeColor={(n) => {
+            if (n.data?.status === 'completed') return 'var(--color-nightshift-success)'
+            if (n.data?.status === 'running') return 'var(--color-nightshift-warning)'
+            return 'var(--color-nightshift-light)'
+          }}
         />
       </ReactFlow>
     </div>

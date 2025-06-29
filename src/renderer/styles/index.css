@@ -44,11 +44,16 @@
     font-weight: 500;
     padding: 0.5rem 1rem;
     border-radius: 0.5rem;
-    transition: background-color 0.15s;
+    border: 1px solid var(--color-nightshift-accent);
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(74, 95, 216, 0.2);
   }
   
   .btn-primary:hover {
     background-color: #2563eb;
+    border-color: #2563eb;
+    box-shadow: 0 4px 8px rgba(74, 95, 216, 0.3);
+    transform: translateY(-1px);
   }
 
   .btn-secondary {
@@ -57,11 +62,53 @@
     font-weight: 500;
     padding: 0.5rem 1rem;
     border-radius: 0.5rem;
-    transition: background-color 0.15s;
+    border: 1px solid var(--color-nightshift-accent);
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }
   
   .btn-secondary:hover {
     background-color: #374151;
+    border-color: var(--color-nightshift-accent);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    transform: translateY(-1px);
+  }
+
+  /* Success/Error button variants */
+  .btn-success {
+    background-color: var(--color-nightshift-success);
+    color: white;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-nightshift-success);
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(34, 197, 94, 0.2);
+  }
+  
+  .btn-success:hover {
+    background-color: #16a34a;
+    border-color: #16a34a;
+    box-shadow: 0 4px 8px rgba(34, 197, 94, 0.3);
+    transform: translateY(-1px);
+  }
+
+  .btn-error {
+    background-color: var(--color-nightshift-error);
+    color: white;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-nightshift-error);
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
+  }
+  
+  .btn-error:hover {
+    background-color: #dc2626;
+    border-color: #dc2626;
+    box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
+    transform: translateY(-1px);
   }
 
   .status-active {
@@ -151,5 +198,32 @@
   main:has(.panel-maximized) .layout-panel:not(.panel-maximized) {
     z-index: 1;
     opacity: 0.4;
+  }
+
+  /* Hide React Flow Controls (zoom buttons) */
+  .react-flow__controls {
+    display: none !important;
+  }
+
+  /* Improve React Flow edge visibility */
+  .react-flow__edge-path {
+    stroke: #9ca3af !important;
+    stroke-width: 2px !important;
+  }
+
+  .react-flow__edge.animated .react-flow__edge-path {
+    stroke: var(--color-nightshift-accent) !important;
+    stroke-width: 3px !important;
+  }
+
+  /* Make connection lines more visible */
+  .react-flow__connection-path {
+    stroke: var(--color-nightshift-accent) !important;
+    stroke-width: 2px !important;
+  }
+
+  /* Improve node selection outline */
+  .react-flow__node.selected {
+    box-shadow: 0 0 0 3px var(--color-nightshift-accent) !important;
   }
 }

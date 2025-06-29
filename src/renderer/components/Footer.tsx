@@ -58,7 +58,7 @@ export const Footer: React.FC = () => {
       
       <div className="flex items-center gap-4 text-xs text-gray-500">
         <span>Mode: {layoutMode}</span>
-        <span>Claude Code Nightshift v1.0.0</span>
+        <span>Agent Nightshift  v1.0.0</span>
       </div>
     </footer>
   )

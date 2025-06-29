@@ -1,7 +1,7 @@
 {
   "name": "claude-code-nightshift",
   "version": "1.0.0",
-  "description": "Claude Code Nightshift - AI-powered overnight development tool",
+  "description": "Agent Nightshift  - AI-powered overnight development tool",
   "main": "src/electron/main.js",
   "scripts": {
     "start": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
@@ -42,6 +42,7 @@
     "clsx": "^2.1.1",
     "d3": "^7.9.0",
     "lucide-react": "^0.523.0",
+    "openai": "^5.8.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwind-merge": "^3.3.1",
@@ -49,7 +50,7 @@
   },
   "build": {
     "appId": "com.ccn.nightshift",
-    "productName": "Claude Code Nightshift",
+    "productName": "Agent Nightshift ",
     "directories": {
       "output": "release"
     },

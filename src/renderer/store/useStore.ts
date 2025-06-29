@@ -115,7 +115,7 @@ export const useStore = create<AppState>((set, get) => {
           job.status === 'planning' 
             ? { 
                 ...job, 
-                status: 'failed',
+                status: 'failed' as const,
                 currentTask: 'Cancelled by user - new plan requested',
                 logs: [...job.logs, '⏹️ Planning cancelled - new plan requested']
               } 
@@ -146,8 +146,8 @@ export const useStore = create<AppState>((set, get) => {
             jobs: updatedJobs,
             activeJobId: result.jobId,
             isSubmitting: false,
-            layoutMode: 'planning',
-            focusedPanel: 'workflow'
+            layoutMode: 'planning' as const,
+            focusedPanel: 'workflow' as const
           }
           
           // Save to localStorage
@@ -193,7 +193,7 @@ export const useStore = create<AppState>((set, get) => {
                   ? { 
                       ...job, 
                       workflowPlan,
-                      status: 'ready',
+                      status: 'ready' as const,
                       currentTask: 'Workflow plan ready for review. Please approve to start execution.',
                       logs: [...job.logs, '⏳ Waiting for approval...']
                     } 
@@ -210,7 +210,7 @@ export const useStore = create<AppState>((set, get) => {
                 job.id === result.jobId 
                   ? { 
                       ...job, 
-                      status: 'failed',
+                      status: 'failed' as const,
                       currentTask: 'Failed to generate workflow plan',
                       logs: [...job.logs, `❌ Failed to generate workflow plan: ${errorMessage}`]
                     } 
@@ -259,7 +259,7 @@ export const useStore = create<AppState>((set, get) => {
           j.id === jobId 
             ? { 
                 ...j, 
-                status: 'running',
+                status: 'running' as const,
                 currentTask: 'Starting execution...',
                 logs: [...j.logs, '✓ Workflow approved', '> Starting execution...']
               }
@@ -291,7 +291,7 @@ export const useStore = create<AppState>((set, get) => {
             j.id === jobId 
               ? { 
                   ...j, 
-                  status: 'failed',
+                  status: 'failed' as const,
                   currentTask: 'Failed to start execution',
                   logs: [...j.logs, `❌ Execution failed: ${errorMessage}`]
                 }
@@ -313,7 +313,7 @@ export const useStore = create<AppState>((set, get) => {
           j.id === jobId 
             ? { 
                 ...j, 
-                status: 'failed',
+                status: 'failed' as const,
                 currentTask: 'Workflow plan rejected',
                 logs: [...j.logs, '✗ Workflow rejected by user']
               }
@@ -322,7 +322,7 @@ export const useStore = create<AppState>((set, get) => {
         localStorage.setItem('jobs', JSON.stringify(updatedJobs))
         return {
           jobs: updatedJobs,
-          layoutMode: 'editing'
+          layoutMode: 'editing' as const
         }
       })
     }
@@ -341,7 +341,7 @@ export const useStore = create<AppState>((set, get) => {
                 j.id === jobId 
                   ? { 
                       ...j, 
-                      status: 'paused',
+                      status: 'paused' as const,
                       currentTask: 'Execution paused by user',
                       logs: [...j.logs, '⏸️ Execution paused']
                     }
@@ -356,7 +356,7 @@ export const useStore = create<AppState>((set, get) => {
               j.id === jobId 
                 ? { 
                     ...j, 
-                    status: 'paused',
+                    status: 'paused' as const,
                     currentTask: 'Execution paused by user',
                     logs: [...j.logs, '⏸️ Execution paused']
                   }
@@ -383,7 +383,7 @@ export const useStore = create<AppState>((set, get) => {
                 j.id === jobId 
                   ? { 
                       ...j, 
-                      status: 'running',
+                      status: 'running' as const,
                       currentTask: 'Resuming execution...',
                       logs: [...j.logs, '▶️ Execution resumed']
                     }
@@ -398,7 +398,7 @@ export const useStore = create<AppState>((set, get) => {
               j.id === jobId 
                 ? { 
                     ...j, 
-                    status: 'running',
+                    status: 'running' as const,
                     currentTask: 'Resuming execution...',
                     logs: [...j.logs, '▶️ Execution resumed']
                   }
@@ -420,35 +420,69 @@ export const useStore = create<AppState>((set, get) => {
         if ((window.electronAPI as any).stopJob) {
           const result = await window.electronAPI.stopJob(jobId)
           if (result.success) {
-            set(state => ({
-              jobs: state.jobs.map(j => 
-                j.id === jobId 
-                  ? { 
-                      ...j, 
-                      status: 'failed',
-                      currentTask: 'Execution stopped by user',
-                      logs: [...j.logs, '⏹️ Execution stopped']
-                    }
-                  : j
-              ),
-              layoutMode: 'editing'
-            }))
+            set(state => {
+              const updatedJobs = state.jobs.map(j => {
+                if (j.id === jobId) {
+                  // Reset workflow nodes to pending state
+                  const resetWorkflowPlan = j.workflowPlan ? {
+                    ...j.workflowPlan,
+                    nodes: j.workflowPlan.nodes.map(node => ({
+                      ...node,
+                      status: node.type === 'start' ? 'completed' as const : 'pending' as const
+                    }))
+                  } : j.workflowPlan
+
+                  return {
+                    ...j,
+                    status: 'ready' as const,
+                    progress: 0,
+                    currentTask: 'Workflow ready for execution',
+                    logs: [...j.logs, '⏹️ Execution stopped - Ready to restart'],
+                    workflowPlan: resetWorkflowPlan
+                  }
+                }
+                return j
+              })
+              
+              localStorage.setItem('jobs', JSON.stringify(updatedJobs))
+              return {
+                jobs: updatedJobs,
+                layoutMode: 'planning' as const
+              }
+            })
           }
         } else {
           // Fallback - just update the status
-          set(state => ({
-            jobs: state.jobs.map(j => 
-              j.id === jobId 
-                ? { 
-                    ...j, 
-                    status: 'failed',
-                    currentTask: 'Execution stopped by user',
-                    logs: [...j.logs, '⏹️ Execution stopped']
-                  }
-                : j
-            ),
-            layoutMode: 'editing'
-          }))
+          set(state => {
+            const updatedJobs = state.jobs.map(j => {
+              if (j.id === jobId) {
+                // Reset workflow nodes to pending state
+                const resetWorkflowPlan = j.workflowPlan ? {
+                  ...j.workflowPlan,
+                  nodes: j.workflowPlan.nodes.map(node => ({
+                    ...node,
+                    status: node.type === 'start' ? 'completed' as const : 'pending' as const
+                  }))
+                } : j.workflowPlan
+
+                return {
+                  ...j,
+                  status: 'ready' as const,
+                  progress: 0,
+                  currentTask: 'Workflow ready for execution',
+                  logs: [...j.logs, '⏹️ Execution stopped - Ready to restart'],
+                  workflowPlan: resetWorkflowPlan
+                }
+              }
+              return j
+            })
+            
+            localStorage.setItem('jobs', JSON.stringify(updatedJobs))
+            return {
+              jobs: updatedJobs,
+              layoutMode: 'planning' as const
+            }
+          })
         }
       } catch (error) {
         console.error('Failed to stop job:', error)
@@ -465,7 +499,7 @@ export const useStore = create<AppState>((set, get) => {
           j.id === jobId 
             ? { 
                 ...j, 
-                status: 'failed',
+                status: 'failed' as const,
                 currentTask: 'Plan generation cancelled by user',
                 logs: [...j.logs, '⏹️ Plan generation cancelled']
               }

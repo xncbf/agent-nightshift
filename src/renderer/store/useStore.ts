@@ -10,6 +10,14 @@ interface Job {
   logs: string[]
   createdAt: Date
   workflowPlan?: WorkflowPlan
+  terminals?: Map<string, TerminalSession>
+}
+
+interface TerminalSession {
+  taskId: string
+  taskTitle: string
+  isActive: boolean
+  output: string[]
 }
 
 

@@ -6,7 +6,7 @@ const { AIProviderManager } = require('./aiProviderManager')
 let mainWindow
 const aiManager = new AIProviderManager()
 const activeJobs = new Map()
-let ptyProcess = null
+const ptyProcesses = new Map() // Map of terminalId -> ptyProcess
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -333,17 +333,17 @@ ipcMain.handle('select-directory', async () => {
 
 
 // Terminal IPC handlers
-ipcMain.handle('create-terminal', async (event, workDirectory) => {
+ipcMain.handle('create-terminal', async (event, workDirectory, terminalId = 'main') => {
   try {
     // Clean up existing terminal if any
-    if (ptyProcess) {
-      ptyProcess.kill()
-      ptyProcess = null
+    const existingProcess = ptyProcesses.get(terminalId)
+    if (existingProcess) {
+      existingProcess.kill()
     }
 
     // Create new pseudo-terminal
     const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash'
-    ptyProcess = pty.spawn(shell, [], {
+    const ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-color',
       cols: 80,
       rows: 30,
@@ -351,15 +351,18 @@ ipcMain.handle('create-terminal', async (event, workDirectory) => {
       env: process.env
     })
 
+    // Store process
+    ptyProcesses.set(terminalId, ptyProcess)
+
     // Handle terminal output
     ptyProcess.on('data', (data) => {
-      mainWindow?.webContents.send('terminal-data', data)
+      mainWindow?.webContents.send('terminal-data', { terminalId, data })
     })
 
     // Handle terminal exit
     ptyProcess.on('exit', (code) => {
-      console.log('Terminal exited with code:', code)
-      ptyProcess = null
+      console.log(`Terminal ${terminalId} exited with code:`, code)
+      ptyProcesses.delete(terminalId)
     })
 
     return { success: true }
@@ -370,22 +373,25 @@ ipcMain.handle('create-terminal', async (event, workDirectory) => {
 })
 
 // Handle terminal input
-ipcMain.handle('terminal-input', async (event, data) => {
+ipcMain.handle('terminal-input', async (event, data, terminalId = 'main') => {
+  const ptyProcess = ptyProcesses.get(terminalId)
   if (ptyProcess) {
     ptyProcess.write(data)
   }
 })
 
 // Resize terminal
-ipcMain.handle('terminal-resize', async (event, cols, rows) => {
+ipcMain.handle('terminal-resize', async (event, cols, rows, terminalId = 'main') => {
+  const ptyProcess = ptyProcesses.get(terminalId)
   if (ptyProcess) {
     ptyProcess.resize(cols, rows)
   }
 })
 
-// Clean up terminal on app quit
+// Clean up terminals on app quit
 app.on('before-quit', () => {
-  if (ptyProcess) {
-    ptyProcess.kill()
-  }
+  ptyProcesses.forEach((process) => {
+    process.kill()
+  })
+  ptyProcesses.clear()
 })

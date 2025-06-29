@@ -21,10 +21,10 @@ export interface ElectronAPI {
   selectDirectory: () => Promise<{ filePaths: string[]; canceled: boolean }>
   
   // Terminal
-  createTerminal: (workDirectory: string) => Promise<{ success: boolean; error?: string }>
-  sendTerminalInput: (data: string) => Promise<void>
-  resizeTerminal: (cols: number, rows: number) => Promise<void>
-  onTerminalData: (callback: (event: any, data: string) => void) => () => void
+  createTerminal: (workDirectory: string, terminalId?: string) => Promise<{ success: boolean; error?: string }>
+  sendTerminalInput: (data: string, terminalId?: string) => Promise<void>
+  resizeTerminal: (cols: number, rows: number, terminalId?: string) => Promise<void>
+  onTerminalData: (callback: (event: any, data: { terminalId: string; data: string }) => void) => () => void
   
   // AI Provider management
   getAIProviders: () => Promise<Array<{

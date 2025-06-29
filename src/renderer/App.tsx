@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { PromptsEditor } from './components/PromptsEditor'
 import { WorkflowStatus } from './components/WorkflowStatus'
-import { Terminal } from './components/Terminal'
+import { MultiTerminal } from './components/MultiTerminal'
 import { Footer } from './components/Footer'
 import { LayoutTransition } from './components/LayoutTransition'
 import { useStore } from './store/useStore'
@@ -452,7 +452,7 @@ function App() {
           }}
         >
           <div className="layout-panel-content h-full">
-            <Terminal />
+            <MultiTerminal />
           </div>
         </section>
       </main>

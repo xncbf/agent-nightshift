@@ -1,6 +1,6 @@
 import React from 'react'
 import { useStore } from '../store/useStore'
-import { CheckCircle, Clock, Zap, XCircle, Play, Pause, Square } from 'lucide-react'
+import { CheckCircle, Clock, Zap, XCircle, Play, Pause, Square, Terminal } from 'lucide-react'
 
 export const ProgressView: React.FC = () => {
   const { jobs, activeJobId, pauseJob, resumeJob, stopJob } = useStore()
@@ -195,21 +195,46 @@ export const ProgressView: React.FC = () => {
                   <p className="text-sm text-gray-400 mb-2">{node.description}</p>
                   
                   <div className="flex items-center justify-between">
-                    <span 
-                      className="px-2 py-1 rounded-full text-xs font-medium"
-                      style={{
-                        backgroundColor: node.status === 'completed' ? 'var(--color-nightshift-success)' + '20' :
-                                        node.status === 'running' ? 'var(--color-nightshift-warning)' + '20' :
-                                        node.status === 'failed' ? 'var(--color-nightshift-error)' + '20' :
-                                        '#6b728020',
-                        color: node.status === 'completed' ? 'var(--color-nightshift-success)' :
-                               node.status === 'running' ? 'var(--color-nightshift-warning)' :
-                               node.status === 'failed' ? 'var(--color-nightshift-error)' :
-                               '#6b7280'
-                      }}
-                    >
-                      {node.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span 
+                        className="px-2 py-1 rounded-full text-xs font-medium"
+                        style={{
+                          backgroundColor: node.status === 'completed' ? 'var(--color-nightshift-success)' + '20' :
+                                          node.status === 'running' ? 'var(--color-nightshift-warning)' + '20' :
+                                          node.status === 'failed' ? 'var(--color-nightshift-error)' + '20' :
+                                          '#6b728020',
+                          color: node.status === 'completed' ? 'var(--color-nightshift-success)' :
+                                 node.status === 'running' ? 'var(--color-nightshift-warning)' :
+                                 node.status === 'failed' ? 'var(--color-nightshift-error)' :
+                                 '#6b7280'
+                        }}
+                      >
+                        {node.status}
+                      </span>
+                      
+                      {/* Terminal View Button */}
+                      <button
+                        onClick={() => {
+                          // Switch to terminal tab for this task
+                          const terminalEvent = new CustomEvent('switchTerminal', { 
+                            detail: { terminalId: node.id } 
+                          })
+                          window.dispatchEvent(terminalEvent)
+                          
+                          // Switch to output panel
+                          const { setFocusedPanel } = useStore.getState()
+                          setFocusedPanel('output')
+                        }}
+                        className="p-1 rounded hover:bg-opacity-20 transition-colors"
+                        style={{
+                          backgroundColor: 'var(--color-nightshift-accent)' + '10',
+                          color: 'var(--color-nightshift-accent)'
+                        }}
+                        title={`View terminal for ${node.title}`}
+                      >
+                        <Terminal className="w-3 h-3" />
+                      </button>
+                    </div>
                     
                     {node.duration && (
                       <span className="text-xs text-gray-500">

@@ -9,7 +9,7 @@ import { BarChart3, Network, CheckCircle, XCircle, Clock, List, Activity, Folder
 export const WorkflowStatus: React.FC = () => {
   const { jobs, activeJobId, approveWorkflowPlan, rejectWorkflowPlan, updateJob, workDirectory, setWorkDirectory } = useStore()
   const activeJob = jobs.find(job => job.id === activeJobId)
-  const [showDirectorySettings, setShowDirectorySettings] = useState(false)
+  const [showDirectorySettings, setShowDirectorySettings] = useState(true)
   // Set default view mode based on job status
   const getDefaultViewMode = () => {
     if (!activeJob) return 'dag'

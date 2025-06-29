@@ -226,4 +226,18 @@
   .react-flow__node.selected {
     box-shadow: 0 0 0 3px var(--color-nightshift-accent) !important;
   }
+
+  /* Terminal styles */
+  .xterm {
+    padding: 12px;
+    height: 100%;
+  }
+
+  .xterm-viewport {
+    background-color: transparent !important;
+  }
+
+  .xterm-screen {
+    margin: 0;
+  }
 }

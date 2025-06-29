@@ -1,10 +1,12 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const pty = require('node-pty')
 const path = require('path')
 const { AIProviderManager } = require('./aiProviderManager')
 
 let mainWindow
 const aiManager = new AIProviderManager()
 const activeJobs = new Map()
+let ptyProcess = null
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -326,5 +328,64 @@ ipcMain.handle('select-directory', async () => {
   } catch (error) {
     console.error('Failed to open directory dialog:', error)
     return { filePaths: [], canceled: true }
+  }
+})
+
+
+// Terminal IPC handlers
+ipcMain.handle('create-terminal', async (event, workDirectory) => {
+  try {
+    // Clean up existing terminal if any
+    if (ptyProcess) {
+      ptyProcess.kill()
+      ptyProcess = null
+    }
+
+    // Create new pseudo-terminal
+    const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash'
+    ptyProcess = pty.spawn(shell, [], {
+      name: 'xterm-color',
+      cols: 80,
+      rows: 30,
+      cwd: workDirectory || process.cwd(),
+      env: process.env
+    })
+
+    // Handle terminal output
+    ptyProcess.on('data', (data) => {
+      mainWindow?.webContents.send('terminal-data', data)
+    })
+
+    // Handle terminal exit
+    ptyProcess.on('exit', (code) => {
+      console.log('Terminal exited with code:', code)
+      ptyProcess = null
+    })
+
+    return { success: true }
+  } catch (error) {
+    console.error('Failed to create terminal:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// Handle terminal input
+ipcMain.handle('terminal-input', async (event, data) => {
+  if (ptyProcess) {
+    ptyProcess.write(data)
+  }
+})
+
+// Resize terminal
+ipcMain.handle('terminal-resize', async (event, cols, rows) => {
+  if (ptyProcess) {
+    ptyProcess.resize(cols, rows)
+  }
+})
+
+// Clean up terminal on app quit
+app.on('before-quit', () => {
+  if (ptyProcess) {
+    ptyProcess.kill()
   }
 })

@@ -25,6 +25,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File system
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
   
+  // Terminal
+  createTerminal: (workDirectory) => ipcRenderer.invoke('create-terminal', workDirectory),
+  sendTerminalInput: (data) => ipcRenderer.invoke('terminal-input', data),
+  resizeTerminal: (cols, rows) => ipcRenderer.invoke('terminal-resize', cols, rows),
+  onTerminalData: (callback) => {
+    ipcRenderer.on('terminal-data', callback)
+    return () => ipcRenderer.removeListener('terminal-data', callback)
+  },
+  
   // AI Provider management
   getAIProviders: () => ipcRenderer.invoke('get-ai-providers'),
   getCurrentProvider: () => ipcRenderer.invoke('get-current-provider'),

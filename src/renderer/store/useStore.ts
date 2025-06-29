@@ -40,21 +40,28 @@ interface AppState {
   setFocusedPanel: (panel: 'prd' | 'workflow' | 'output' | null) => void
   
   // AI Configuration
-  aiProvider: 'openai' | 'claude-code'
-  setAiProvider: (provider: 'openai' | 'claude-code') => void
+  aiProvider: 'openai' | 'claude'
+  setAiProvider: (provider: 'openai' | 'claude') => void
   openaiModel: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo'
   setOpenaiModel: (model: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo') => void
   openaiApiKey: string
   setOpenaiApiKey: (key: string) => void
   isOpenaiConfigured: boolean
+  claudeModel: 'claude-sonnet-4-0' | 'claude-opus-4-0'
+  setClaudeModel: (model: 'claude-sonnet-4-0' | 'claude-opus-4-0') => void
+  claudeApiKey: string
+  setClaudeApiKey: (key: string) => void
+  isClaudeConfigured: boolean
   isAIConfigured: boolean
 }
 
 export const useStore = create<AppState>((set, get) => {
   // Load saved preferences from localStorage
-  const savedApiKey = localStorage.getItem('openai_api_key') || ''
-  const savedProvider = (localStorage.getItem('ai_provider') as 'openai' | 'claude-code') || 'openai'
-  const savedModel = (localStorage.getItem('openai_model') as 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo') || 'gpt-4o-mini'
+  const savedOpenaiApiKey = localStorage.getItem('openai_api_key') || ''
+  const savedClaudeApiKey = localStorage.getItem('claude_api_key') || ''
+  const savedProvider = (localStorage.getItem('ai_provider') as 'openai' | 'claude') || 'openai'
+  const savedOpenaiModel = (localStorage.getItem('openai_model') as 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo') || 'gpt-4o-mini'
+  const savedClaudeModel = (localStorage.getItem('claude_model') as 'claude-sonnet-4-0' | 'claude-opus-4-0') || 'claude-sonnet-4-0'
   
   // Load saved PRD and jobs
   const savedPRD = localStorage.getItem('current_prd') || ''
@@ -171,7 +178,8 @@ export const useStore = create<AppState>((set, get) => {
           const workflowAI = new WorkflowAI(
             addLogToJob, 
             currentState.aiProvider, 
-            currentState.openaiModel
+            currentState.openaiModel,
+            currentState.claudeModel
           )
           
           try {
@@ -478,22 +486,25 @@ export const useStore = create<AppState>((set, get) => {
   
   // AI Configuration
   aiProvider: savedProvider,
-  setAiProvider: (provider: 'openai' | 'claude-code') => {
+  setAiProvider: (provider: 'openai' | 'claude') => {
     set({ aiProvider: provider })
     localStorage.setItem('ai_provider', provider)
     
     // Update isAIConfigured
     const state = get()
-    set({ isAIConfigured: provider === 'claude-code' || (provider === 'openai' && !!state.openaiApiKey) })
+    set({ 
+      isAIConfigured: (provider === 'openai' && !!state.openaiApiKey) ||
+                     (provider === 'claude' && !!state.claudeApiKey)
+    })
   },
-  openaiModel: savedModel,
+  openaiModel: savedOpenaiModel,
   setOpenaiModel: (model: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo') => {
     set({ openaiModel: model })
     localStorage.setItem('openai_model', model)
   },
   
   // OpenAI API
-  openaiApiKey: savedApiKey,
+  openaiApiKey: savedOpenaiApiKey,
   setOpenaiApiKey: (key) => {
     set({ openaiApiKey: key, isOpenaiConfigured: !!key })
     // Save to localStorage
@@ -504,11 +515,39 @@ export const useStore = create<AppState>((set, get) => {
     }
     // Update isAIConfigured
     const state = get()
-    set({ isAIConfigured: state.aiProvider === 'claude-code' || (state.aiProvider === 'openai' && !!key) })
+    set({ 
+      isAIConfigured: (state.aiProvider === 'openai' && !!key) ||
+                     (state.aiProvider === 'claude' && !!state.claudeApiKey)
+    })
   },
-  isOpenaiConfigured: !!savedApiKey,
+  isOpenaiConfigured: !!savedOpenaiApiKey,
+  
+  // Claude API
+  claudeModel: savedClaudeModel,
+  setClaudeModel: (model: 'claude-sonnet-4-0' | 'claude-opus-4-0') => {
+    set({ claudeModel: model })
+    localStorage.setItem('claude_model', model)
+  },
+  claudeApiKey: savedClaudeApiKey,
+  setClaudeApiKey: (key) => {
+    set({ claudeApiKey: key, isClaudeConfigured: !!key })
+    // Save to localStorage
+    if (key) {
+      localStorage.setItem('claude_api_key', key)
+    } else {
+      localStorage.removeItem('claude_api_key')
+    }
+    // Update isAIConfigured
+    const state = get()
+    set({ 
+      isAIConfigured: (state.aiProvider === 'openai' && !!state.openaiApiKey) ||
+                     (state.aiProvider === 'claude' && !!key)
+    })
+  },
+  isClaudeConfigured: !!savedClaudeApiKey,
   
   // Computed state
-  isAIConfigured: savedProvider === 'claude-code' || (savedProvider === 'openai' && !!savedApiKey)
+  isAIConfigured: (savedProvider === 'openai' && !!savedOpenaiApiKey) ||
+                 (savedProvider === 'claude' && !!savedClaudeApiKey)
   }
 })

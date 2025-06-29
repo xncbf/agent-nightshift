@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { TaskNode, WorkflowPlan } from '../types/workflow'
-import { Edit3, Plus, Trash2, Save, X } from 'lucide-react'
+import { Trash2, Save, X } from 'lucide-react'
 
 interface PlanEditorProps {
   workflowPlan: WorkflowPlan
@@ -12,13 +12,15 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
   const [editForm, setEditForm] = useState<{
     title: string
     description: string
-  }>({ title: '', description: '' })
+    dependencies: string[]
+  }>({ title: '', description: '', dependencies: [] })
 
   const handleEditStart = (node: TaskNode) => {
     setEditingNodeId(node.id)
     setEditForm({
       title: node.title,
-      description: node.description
+      description: node.description,
+      dependencies: node.dependencies || []
     })
   }
 
@@ -30,7 +32,8 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
         ? {
             ...node,
             title: editForm.title,
-            description: editForm.description
+            description: editForm.description,
+            dependencies: editForm.dependencies
           }
         : node
     )
@@ -46,7 +49,7 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
 
   const handleEditCancel = () => {
     setEditingNodeId(null)
-    setEditForm({ title: '', description: '' })
+    setEditForm({ title: '', description: '', dependencies: [] })
   }
 
   const handleDeleteNode = (nodeId: string) => {
@@ -103,7 +106,7 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
             className="p-4 rounded-lg transition-all duration-200"
             style={{ 
               backgroundColor: 'var(--color-nightshift-darker)',
-              border: '1px solid #6b7280',
+              border: editingNodeId === node.id ? '2px solid var(--color-nightshift-accent)' : '1px solid #6b7280',
               boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
             }}
           >
@@ -156,6 +159,57 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
                   />
                 </div>
                 
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    <span className="flex items-center gap-2">
+                      🔗 Dependencies (Parent Tasks)
+                      <span className="text-xs text-gray-400">(tasks that must complete before this one)</span>
+                    </span>
+                  </label>
+                  <div className="space-y-1">
+                    {workflowPlan.nodes
+                      .filter(n => n.id !== node.id && n.type !== 'end') // Don't allow self or end as dependency
+                      .map(potentialParent => {
+                        const isSelected = editForm.dependencies.includes(potentialParent.id)
+                        return (
+                          <label
+                            key={potentialParent.id}
+                            className="flex items-center gap-2 p-2 rounded cursor-pointer transition-colors"
+                            style={{
+                              backgroundColor: isSelected ? 'var(--color-nightshift-accent)' + '20' : 'var(--color-nightshift-light)',
+                              border: isSelected ? '1px solid var(--color-nightshift-accent)' : '1px solid #6b7280'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setEditForm({
+                                    ...editForm,
+                                    dependencies: [...editForm.dependencies, potentialParent.id]
+                                  })
+                                } else {
+                                  setEditForm({
+                                    ...editForm,
+                                    dependencies: editForm.dependencies.filter(id => id !== potentialParent.id)
+                                  })
+                                }
+                              }}
+                              className="rounded"
+                            />
+                            <span className="text-sm">
+                              #{workflowPlan.nodes.findIndex(n => n.id === potentialParent.id) + 1} {potentialParent.title}
+                            </span>
+                          </label>
+                        )
+                      })
+                    }
+                    {workflowPlan.nodes.filter(n => n.id !== node.id && n.type !== 'end').length === 0 && (
+                      <p className="text-xs text-gray-500 italic">No available parent tasks</p>
+                    )}
+                  </div>
+                </div>
                 
                 <div className="flex items-center gap-2">
                   <button
@@ -175,8 +229,12 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
                 </div>
               </div>
             ) : (
-              // Display mode
-              <div>
+              // Display mode - Make entire area clickable for editing
+              <div
+                className="cursor-pointer"
+                onClick={() => node.type === 'task' && handleEditStart(node)}
+                title={node.type === 'task' ? 'Click to edit task' : ''}
+              >
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-gray-500">#{index + 1}</span>
@@ -185,14 +243,7 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
                   </div>
                   
                   {node.type === 'task' && (
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleEditStart(node)}
-                        className="p-1 rounded-md transition-colors border border-gray-600 hover:border-blue-500 hover:bg-blue-500/10"
-                        title="Edit task"
-                      >
-                        <Edit3 className="w-3 h-3" />
-                      </button>
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => handleDeleteNode(node.id)}
                         className="p-1 rounded-md transition-colors border border-gray-600 hover:border-red-500 hover:bg-red-500/10"
@@ -205,6 +256,16 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
                 </div>
                 
                 <p className="text-sm text-gray-400 mb-2">{node.description}</p>
+                
+                {/* Show dependencies */}
+                {node.dependencies && node.dependencies.length > 0 && (
+                  <div className="text-xs text-gray-500 mb-2">
+                    🔗 Depends on: {node.dependencies.map(depId => {
+                      const depNode = workflowPlan.nodes.find(n => n.id === depId)
+                      return depNode ? `#${workflowPlan.nodes.findIndex(n => n.id === depId) + 1} ${depNode.title}` : depId
+                    }).join(', ')}
+                  </div>
+                )}
                 
                 {node.duration && (
                   <div className="text-xs text-gray-500">

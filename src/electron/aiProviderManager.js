@@ -9,12 +9,12 @@ class AIProviderManager {
     this.currentProvider = null
     
     // Register available providers
-    this.registerProvider('claude-code', new ClaudeCodeProvider())
+    // this.registerProvider('claude-code', new ClaudeCodeProvider())
     // this.registerProvider('openai', new OpenAIProvider())
     // this.registerProvider('gemini', new GeminiProvider())
     
-    // Set default provider
-    this.setProvider('claude-code')
+    // No default provider set - will be configured via UI
+    // this.setProvider('openai')
   }
 
   registerProvider(id, provider) {

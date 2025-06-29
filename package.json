@@ -37,6 +37,7 @@
     "wait-on": "^8.0.3"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.55.0",
     "@radix-ui/themes": "^3.2.1",
     "@xyflow/react": "^12.7.1",
     "clsx": "^2.1.1",

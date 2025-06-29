@@ -120,7 +120,7 @@ export const LiveOutput: React.FC = () => {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `claude-code-logs-${activeJob.id}.txt`
+    a.download = `agent-nightshift-logs-${activeJob.id}.txt`
     a.click()
     URL.revokeObjectURL(url)
   }

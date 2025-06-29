@@ -1,7 +1,6 @@
 import React from 'react'
 import { useStore } from '../store/useStore'
-import { TaskNode } from '../types/workflow'
-import { CheckCircle, Clock, Zap, XCircle, Play, Pause, Square, RotateCcw } from 'lucide-react'
+import { CheckCircle, Clock, Zap, XCircle, Play, Pause, Square } from 'lucide-react'
 
 export const ProgressView: React.FC = () => {
   const { jobs, activeJobId, pauseJob, resumeJob, stopJob } = useStore()
@@ -15,8 +14,31 @@ export const ProgressView: React.FC = () => {
     )
   }
 
+  // If job is ready (not yet started), show waiting message
+  if (activeJob.status === 'ready') {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-gray-500">
+        <div className="text-center">
+          <div className="w-16 h-16 mb-4 mx-auto rounded-full flex items-center justify-center" 
+               style={{ backgroundColor: 'var(--color-nightshift-warning)' + '20' }}>
+            <Clock className="w-8 h-8" style={{ color: 'var(--color-nightshift-warning)' }} />
+          </div>
+          <h3 className="text-lg font-medium mb-2">Workflow Ready</h3>
+          <p className="text-sm mb-4 max-w-md">
+            The workflow plan has been generated and is ready for execution. 
+            Please approve the plan to start processing.
+          </p>
+          <div className="text-xs text-gray-600">
+            {activeJob.workflowPlan.nodes.filter(n => n.type === 'task').length} tasks • 
+            Est. {activeJob.workflowPlan.estimatedDuration} minutes
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const { workflowPlan } = activeJob
-  const completedTasks = workflowPlan.nodes.filter(n => n.status === 'completed').length
+  const completedTasks = workflowPlan.nodes.filter(n => n.status === 'completed' && n.type === 'task').length
   const totalTasks = workflowPlan.nodes.filter(n => n.type === 'task').length
   const currentTask = workflowPlan.nodes.find(n => n.status === 'running')
 
@@ -30,10 +52,10 @@ export const ProgressView: React.FC = () => {
         return <XCircle className="w-5 h-5" style={{ color: 'var(--color-nightshift-error)' }} />
       case 'pending':
         return <Clock className="w-5 h-5 text-gray-400" />
-      case 'paused':
-        return <Pause className="w-5 h-5 text-orange-400" />
-      default:
+      case 'skipped':
         return <Play className="w-5 h-5 text-gray-400" />
+      default:
+        return <Clock className="w-5 h-5 text-gray-400" />
     }
   }
 
@@ -178,12 +200,10 @@ export const ProgressView: React.FC = () => {
                       style={{
                         backgroundColor: node.status === 'completed' ? 'var(--color-nightshift-success)' + '20' :
                                         node.status === 'running' ? 'var(--color-nightshift-warning)' + '20' :
-                                        node.status === 'paused' ? '#f9731620' :
                                         node.status === 'failed' ? 'var(--color-nightshift-error)' + '20' :
                                         '#6b728020',
                         color: node.status === 'completed' ? 'var(--color-nightshift-success)' :
                                node.status === 'running' ? 'var(--color-nightshift-warning)' :
-                               node.status === 'paused' ? '#f97316' :
                                node.status === 'failed' ? 'var(--color-nightshift-error)' :
                                '#6b7280'
                       }}

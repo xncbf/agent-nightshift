@@ -6,6 +6,7 @@ import { Footer } from './components/Footer'
 import { LayoutTransition } from './components/LayoutTransition'
 import { useStore } from './store/useStore'
 import { openaiService } from './services/openaiService'
+import { claudeApiService } from './services/claudeApiService'
 
 function App() {
   const { 
@@ -16,10 +17,15 @@ function App() {
     openaiApiKey, 
     setOpenaiApiKey, 
     isOpenaiConfigured,
+    claudeApiKey,
+    setClaudeApiKey,
+    isClaudeConfigured,
     aiProvider,
     setAiProvider,
     openaiModel,
-    setOpenaiModel
+    setOpenaiModel,
+    claudeModel,
+    setClaudeModel
   } = useStore()
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
   const [tempApiKey, setTempApiKey] = useState('')
@@ -32,7 +38,13 @@ function App() {
       openaiService.setApiKey(openaiApiKey)
     }
     openaiService.setModel(openaiModel)
-  }, [openaiApiKey, openaiModel])
+    
+    // Initialize Claude API service with saved key and model
+    if (claudeApiKey) {
+      claudeApiService.setApiKey(claudeApiKey)
+    }
+    claudeApiService.setModel(claudeModel)
+  }, [openaiApiKey, openaiModel, claudeApiKey, claudeModel])
 
   useEffect(() => {
     // Close dropdowns when clicking outside
@@ -179,7 +191,7 @@ function App() {
                   outline: 'none'
                 }}
               >
-                {aiProvider === 'openai' ? '🤖 OpenAI' : '🧠 Claude Code'}
+                {aiProvider === 'openai' ? '🤖 OpenAI' : '🤖 Claude API'}
                 <span style={{ transform: showProviderDropdown ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▼</span>
               </button>
               
@@ -203,13 +215,13 @@ function App() {
                   </button>
                   <button
                     onClick={() => {
-                      setAiProvider('claude-code')
+                      setAiProvider('claude')
                       setShowProviderDropdown(false)
                     }}
                     className="w-full px-3 py-2 text-left text-sm hover:opacity-80 transition-opacity"
                     style={{ color: 'white' }}
                   >
-                    🧠 Claude Code
+                    🤖 Claude API
                   </button>
                 </div>
               )}
@@ -278,6 +290,59 @@ function App() {
                 )}
               </div>
             )}
+            
+            {/* Claude Model Selection */}
+            {aiProvider === 'claude' && (
+              <div className="relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowModelDropdown(!showModelDropdown)
+                  }}
+                  className="px-2 py-1 rounded-md text-sm font-medium cursor-pointer flex items-center gap-1"
+                  style={{
+                    backgroundColor: 'var(--color-nightshift-darker)',
+                    border: '1px solid var(--color-nightshift-accent)',
+                    color: 'white',
+                    outline: 'none'
+                  }}
+                >
+                  {claudeModel === 'claude-sonnet-4-0' ? 'Claude Sonnet 4' : 'Claude Opus 4'}
+                  <span style={{ transform: showModelDropdown ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▼</span>
+                </button>
+                
+                {showModelDropdown && (
+                  <div 
+                    className="absolute top-full left-0 mt-1 min-w-full rounded-md shadow-lg z-50"
+                    style={{
+                      backgroundColor: 'var(--color-nightshift-darker)',
+                      border: '1px solid var(--color-nightshift-accent)'
+                    }}
+                  >
+                    <button
+                      onClick={() => {
+                        setClaudeModel('claude-sonnet-4-0')
+                        setShowModelDropdown(false)
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm hover:opacity-80 transition-opacity whitespace-nowrap"
+                      style={{ color: 'white' }}
+                    >
+                      Claude Sonnet 4
+                    </button>
+                    <button
+                      onClick={() => {
+                        setClaudeModel('claude-opus-4-0')
+                        setShowModelDropdown(false)
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm hover:opacity-80 transition-opacity whitespace-nowrap"
+                      style={{ color: 'white' }}
+                    >
+                      Claude Opus 4
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           
           {/* Configuration Status */}
@@ -294,16 +359,17 @@ function App() {
             </button>
           )}
           
-          {aiProvider === 'claude-code' && (
-            <span
-              className="px-3 py-1 rounded-md font-medium"
+          {aiProvider === 'claude' && (
+            <button
+              onClick={() => setShowApiKeyModal(true)}
+              className="px-3 py-1 rounded-md font-medium transition-all duration-300"
               style={{ 
-                backgroundColor: 'var(--color-nightshift-success)',
+                backgroundColor: isClaudeConfigured ? 'var(--color-nightshift-success)' : 'var(--color-nightshift-warning)',
                 color: 'white'
               }}
             >
-              🧠 Claude Ready
-            </span>
+              {isClaudeConfigured ? '🔑 API Configured' : '⚠️ Set API Key'}
+            </button>
           )}
           
           <span className="text-gray-400">Mode:</span>
@@ -401,16 +467,18 @@ function App() {
       {showApiKeyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.8)' }}>
           <div className="rounded-lg p-6 max-w-md w-full" style={{ backgroundColor: 'var(--color-nightshift-darker)', border: '1px solid var(--color-nightshift-accent)' }}>
-            <h2 className="text-xl font-semibold mb-4">🔑 Configure OpenAI API Key</h2>
+            <h2 className="text-xl font-semibold mb-4">
+              🔑 Configure {aiProvider === 'openai' ? 'OpenAI' : 'Claude'} API Key
+            </h2>
             <p className="text-sm text-gray-400 mb-4">
-              Enter your OpenAI API key to enable AI-powered workflow generation.
+              Enter your {aiProvider === 'openai' ? 'OpenAI' : 'Claude'} API key to enable AI-powered workflow generation.
               Your key will be stored locally in your browser.
             </p>
             <input
               type="password"
-              value={tempApiKey || openaiApiKey}
+              value={tempApiKey || (aiProvider === 'openai' ? openaiApiKey : claudeApiKey)}
               onChange={(e) => setTempApiKey(e.target.value)}
-              placeholder="sk-..."
+              placeholder={aiProvider === 'openai' ? 'sk-...' : 'sk-ant-...'}
               className="w-full px-3 py-2 rounded-md mb-4"
               style={{
                 backgroundColor: 'var(--color-nightshift-light)',
@@ -430,9 +498,14 @@ function App() {
               </button>
               <button
                 onClick={() => {
-                  const key = tempApiKey || openaiApiKey
-                  setOpenaiApiKey(key)
-                  openaiService.setApiKey(key)
+                  const key = tempApiKey || (aiProvider === 'openai' ? openaiApiKey : claudeApiKey)
+                  if (aiProvider === 'openai') {
+                    setOpenaiApiKey(key)
+                    openaiService.setApiKey(key)
+                  } else {
+                    setClaudeApiKey(key)
+                    claudeApiService.setApiKey(key)
+                  }
                   setTempApiKey('')
                   setShowApiKeyModal(false)
                 }}

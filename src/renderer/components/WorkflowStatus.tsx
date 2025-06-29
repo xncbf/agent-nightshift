@@ -19,12 +19,12 @@ export const WorkflowStatus: React.FC = () => {
 
   const [viewMode, setViewMode] = useState<'dag' | 'list' | 'progress'>(getDefaultViewMode())
 
-  // Update view mode when job status changes
-  React.useEffect(() => {
-    if ((activeJob?.status === 'running' || activeJob?.status === 'paused') && viewMode !== 'progress') {
-      setViewMode('progress')
-    }
-  }, [activeJob?.status, viewMode])
+  // Don't auto-switch view mode - let user control it
+  // React.useEffect(() => {
+  //   if ((activeJob?.status === 'running' || activeJob?.status === 'paused') && viewMode !== 'progress') {
+  //     setViewMode('progress')
+  //   }
+  // }, [activeJob?.status, viewMode])
 
   const handleNodeClick = (node: TaskNode) => {
     console.log('Node clicked:', node)
@@ -145,22 +145,20 @@ export const WorkflowStatus: React.FC = () => {
             >
               <List className="w-4 h-4" />
             </button>
-            {(activeJob?.status === 'running' || activeJob?.status === 'paused') && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setViewMode('progress')
-                }}
-                className="p-2 rounded-lg transition-colors"
-                style={{
-                  backgroundColor: viewMode === 'progress' ? 'var(--color-nightshift-accent)' : 'var(--color-nightshift-darker)',
-                  color: viewMode === 'progress' ? 'white' : '#9ca3af'
-                }}
-                title="Progress View"
-              >
-                <Activity className="w-4 h-4" />
-              </button>
-            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setViewMode('progress')
+              }}
+              className="p-2 rounded-lg transition-colors"
+              style={{
+                backgroundColor: viewMode === 'progress' ? 'var(--color-nightshift-accent)' : 'var(--color-nightshift-darker)',
+                color: viewMode === 'progress' ? 'white' : '#9ca3af'
+              }}
+              title="Progress View"
+            >
+              <Activity className="w-4 h-4" />
+            </button>
           </div>
         </div>
         

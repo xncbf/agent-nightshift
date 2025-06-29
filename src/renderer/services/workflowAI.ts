@@ -1,33 +1,39 @@
 import { openaiService } from './openaiService'
-import { claudeService } from './claudeService'
+import { claudeApiService } from './claudeApiService'
 import { TaskNode, WorkflowPlan } from '../types/workflow'
 
 export class WorkflowAI {
   private addLog: (log: string) => void
-  private aiProvider: 'openai' | 'claude-code'
+  private aiProvider: 'openai' | 'claude'
   private openaiModel: string
+  private claudeModel: string
   
   constructor(
     addLog: (log: string) => void, 
-    aiProvider: 'openai' | 'claude-code' = 'openai',
-    openaiModel: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo' = 'gpt-4o-mini'
+    aiProvider: 'openai' | 'claude' = 'openai',
+    openaiModel: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo' = 'gpt-4o-mini',
+    claudeModel: 'claude-sonnet-4-0' | 'claude-opus-4-0' = 'claude-sonnet-4-0'
   ) {
     this.addLog = addLog
     this.aiProvider = aiProvider
     this.openaiModel = openaiModel
+    this.claudeModel = claudeModel
     
-    // Configure OpenAI model if using OpenAI
+    // Configure models based on provider
     if (aiProvider === 'openai') {
       openaiService.setModel(openaiModel)
+    } else if (aiProvider === 'claude') {
+      claudeApiService.setModel(claudeModel)
     }
   }
   
   async analyzeContentAndGenerateWorkflow(content: string): Promise<WorkflowPlan> {
     try {
-      this.addLog(`🤔 Analyzing content with ${this.aiProvider === 'openai' ? 'OpenAI' : 'Claude Code'}...`)
+      const providerName = this.aiProvider === 'openai' ? 'OpenAI' : 'Claude API'
+      this.addLog(`🤔 Analyzing content with ${providerName}...`)
       
       // Use the appropriate service based on provider
-      const service = this.aiProvider === 'openai' ? openaiService : claudeService
+      const service = this.aiProvider === 'openai' ? openaiService : claudeApiService
       const analysis = await service.extractAndAnalyzePrompts(content)
       
       if (analysis.tasks.length === 1) {
@@ -47,10 +53,11 @@ export class WorkflowAI {
   
   async analyzePRDAndGenerateWorkflow(prompt: string): Promise<WorkflowPlan> {
     try {
-      this.addLog(`🔍 Analyzing prompt with ${this.aiProvider === 'openai' ? 'OpenAI' : 'Claude Code'}...`)
+      const providerName = this.aiProvider === 'openai' ? 'OpenAI' : 'Claude API'
+      this.addLog(`🔍 Analyzing prompt with ${providerName}...`)
       
       // Use the appropriate service based on provider
-      const service = this.aiProvider === 'openai' ? openaiService : claudeService
+      const service = this.aiProvider === 'openai' ? openaiService : claudeApiService
       const plan = await service.generatePlan(prompt)
       
       this.addLog('📋 Creating workflow plan...')

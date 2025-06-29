@@ -3,8 +3,8 @@ import { useStore } from '../store/useStore'
 import { Send, Plus, X, AlertCircle } from 'lucide-react'
 
 export const PromptsEditor: React.FC = () => {
-  const { isSubmitting, setIsSubmitting, addJob, isAIConfigured, aiProvider, jobs } = useStore()
-  const [content, setContent] = useState('')
+  const { isSubmitting, setIsSubmitting, addJob, isAIConfigured, aiProvider, jobs, currentPRD, setCurrentPRD } = useStore()
+  const [content, setContent] = useState(currentPRD)
   
   const planningJob = jobs.find(job => job.status === 'planning')
   const isPlanning = !!planningJob
@@ -57,15 +57,6 @@ export const PromptsEditor: React.FC = () => {
         </div>
       )}
 
-      {aiProvider === 'claude-code' && (
-        <div className="mb-4 p-3 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'var(--color-nightshift-accent)', opacity: 0.8 }}>
-          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="font-medium">Claude Code Performance Notice</p>
-            <p className="text-sm">Claude Code provides high-quality analysis but may take longer to process compared to OpenAI API. Please be patient during plan generation.</p>
-          </div>
-        </div>
-      )}
 
       {isPlanning && (
         <div className="mb-4 p-3 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'var(--color-nightshift-warning)', opacity: 0.8 }}>
@@ -80,7 +71,10 @@ export const PromptsEditor: React.FC = () => {
       <div className="flex-1 mb-4">
         <textarea
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={(e) => {
+            setContent(e.target.value)
+            setCurrentPRD(e.target.value)
+          }}
           onKeyDown={handleKeyDown}
           placeholder="Enter your prompts here...\n\nExamples:\n• Create a React component for user authentication\n• Set up a REST API with Express\n• Add unit tests for all components\n\nOr just paste a numbered list:\n1. Build a landing page\n2. Add contact form\n3. Deploy to Vercel"
           disabled={isSubmitting}

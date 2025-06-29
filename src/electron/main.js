@@ -289,8 +289,8 @@ ipcMain.handle('execute-claude', async (event, prompt) => {
       // Set timeout for long-running commands
       setTimeout(() => {
         claudeProcess.kill()
-        resolve({ success: false, error: 'Claude CLI execution timeout (600s)' })
-      }, 600000)
+        resolve({ success: false, error: 'Claude CLI execution timeout (1200s)' })
+      }, 1200000)
     })
     
   } catch (error) {

@@ -53,6 +53,16 @@ export const PromptsEditor: React.FC = () => {
           </div>
         </div>
       )}
+
+      {aiProvider === 'claude-code' && (
+        <div className="mb-4 p-3 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'var(--color-nightshift-accent)', opacity: 0.8 }}>
+          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">Claude Code Performance Notice</p>
+            <p className="text-sm">Claude Code provides high-quality analysis but may take longer to process compared to OpenAI API. Please be patient during plan generation.</p>
+          </div>
+        </div>
+      )}
       
       <div className="flex-1 mb-4">
         <textarea

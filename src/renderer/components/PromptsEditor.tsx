@@ -3,8 +3,11 @@ import { useStore } from '../store/useStore'
 import { Send, Plus, X, AlertCircle } from 'lucide-react'
 
 export const PromptsEditor: React.FC = () => {
-  const { isSubmitting, setIsSubmitting, addJob, isAIConfigured, aiProvider } = useStore()
+  const { isSubmitting, setIsSubmitting, addJob, isAIConfigured, aiProvider, jobs } = useStore()
   const [content, setContent] = useState('')
+  
+  const planningJob = jobs.find(job => job.status === 'planning')
+  const isPlanning = !!planningJob
   
   const handleSubmit = async () => {
     if (!content.trim()) return
@@ -16,7 +19,7 @@ export const PromptsEditor: React.FC = () => {
     }
     
     await addJob(content.trim())
-    setContent('')
+    // Don't clear content so user can see what they submitted
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -63,6 +66,16 @@ export const PromptsEditor: React.FC = () => {
           </div>
         </div>
       )}
+
+      {isPlanning && (
+        <div className="mb-4 p-3 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'var(--color-nightshift-warning)', opacity: 0.8 }}>
+          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">Plan Generation in Progress</p>
+            <p className="text-sm">Currently generating workflow plan. Click "Stop & Create New Plan" to cancel and start a new plan generation.</p>
+          </div>
+        </div>
+      )}
       
       <div className="flex-1 mb-4">
         <textarea
@@ -87,7 +100,9 @@ export const PromptsEditor: React.FC = () => {
           className="flex-1 btn-primary flex items-center justify-center gap-2"
         >
           <Send className="w-5 h-5" />
-          {isSubmitting ? 'Analyzing Prompts...' : 'Create Plan'}
+          {isSubmitting ? 'Analyzing Prompts...' : 
+           isPlanning ? 'Stop & Create New Plan' : 
+           'Create Plan'}
         </button>
         <div className="text-sm text-gray-500 flex items-center">
           Press {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter

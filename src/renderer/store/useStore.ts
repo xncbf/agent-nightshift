@@ -29,6 +29,7 @@ interface AppState {
   pauseJob: (jobId: string) => void
   resumeJob: (jobId: string) => void
   stopJob: (jobId: string) => void
+  cancelPlanGeneration: (jobId: string) => void
   
   // UI State
   isSubmitting: boolean
@@ -55,19 +56,67 @@ export const useStore = create<AppState>((set, get) => {
   const savedProvider = (localStorage.getItem('ai_provider') as 'openai' | 'claude-code') || 'openai'
   const savedModel = (localStorage.getItem('openai_model') as 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo') || 'gpt-4o-mini'
   
+  // Load saved PRD and jobs
+  const savedPRD = localStorage.getItem('current_prd') || ''
+  
+  let savedJobs = []
+  try {
+    savedJobs = JSON.parse(localStorage.getItem('jobs') || '[]').map((job: any) => ({
+      ...job,
+      createdAt: new Date(job.createdAt),
+      // Ensure required properties exist
+      logs: job.logs || [],
+      status: job.status || 'pending',
+      progress: job.progress || 0,
+      currentTask: job.currentTask || ''
+    }))
+  } catch (error) {
+    console.warn('Failed to load saved jobs from localStorage:', error)
+    savedJobs = []
+  }
+  
+  const savedActiveJobId = localStorage.getItem('active_job_id') || null
+  
+  // Validate active job ID exists in saved jobs
+  const validActiveJobId = savedJobs.find(job => job.id === savedActiveJobId) ? savedActiveJobId : null
+  
   return {
   // PRD Editor
-  currentPRD: '',
-  setCurrentPRD: (prd) => set({ currentPRD: prd }),
+  currentPRD: savedPRD,
+  setCurrentPRD: (prd) => {
+    set({ currentPRD: prd })
+    localStorage.setItem('current_prd', prd)
+  },
   
   // Jobs
-  jobs: [],
-  activeJobId: null,
+  jobs: savedJobs,
+  activeJobId: validActiveJobId,
   
   addJob: async (prd) => {
     const { submitPRD } = window.electronAPI
     
     set({ isSubmitting: true })
+    
+    // Check if there's an existing planning job and cancel it
+    const currentState = get()
+    const planningJob = currentState.jobs.find(job => job.status === 'planning')
+    if (planningJob) {
+      // Cancel the existing planning job
+      set(state => {
+        const updatedJobs = state.jobs.map(job => 
+          job.status === 'planning' 
+            ? { 
+                ...job, 
+                status: 'failed',
+                currentTask: 'Cancelled by user - new plan requested',
+                logs: [...job.logs, '⏹️ Planning cancelled - new plan requested']
+              } 
+            : job
+        )
+        localStorage.setItem('jobs', JSON.stringify(updatedJobs))
+        return { jobs: updatedJobs }
+      })
+    }
     
     try {
       const result = await submitPRD(prd)
@@ -83,14 +132,22 @@ export const useStore = create<AppState>((set, get) => {
           createdAt: new Date()
         }
         
-        set(state => ({
-          jobs: [...state.jobs, newJob],
-          activeJobId: result.jobId,
-          currentPRD: '',
-          isSubmitting: false,
-          layoutMode: 'planning',
-          focusedPanel: 'workflow'
-        }))
+        set(state => {
+          const updatedJobs = [...state.jobs, newJob]
+          const newState = {
+            jobs: updatedJobs,
+            activeJobId: result.jobId,
+            isSubmitting: false,
+            layoutMode: 'planning',
+            focusedPanel: 'workflow'
+          }
+          
+          // Save to localStorage
+          localStorage.setItem('jobs', JSON.stringify(updatedJobs))
+          localStorage.setItem('active_job_id', result.jobId)
+          
+          return newState
+        })
         
         // Generate workflow plan with WorkflowAI
         setTimeout(async () => {
@@ -98,13 +155,15 @@ export const useStore = create<AppState>((set, get) => {
           
           // Create a log function that updates the job's logs
           const addLogToJob = (log: string) => {
-            set(state => ({
-              jobs: state.jobs.map(job => 
+            set(state => {
+              const updatedJobs = state.jobs.map(job => 
                 job.id === result.jobId 
                   ? { ...job, logs: [...job.logs, log] } 
                   : job
               )
-            }))
+              localStorage.setItem('jobs', JSON.stringify(updatedJobs))
+              return { jobs: updatedJobs }
+            })
           }
           
           // Get current AI provider settings
@@ -119,8 +178,8 @@ export const useStore = create<AppState>((set, get) => {
             // AI will automatically detect if it's single or multiple prompts
             const workflowPlan = await workflowAI.analyzeContentAndGenerateWorkflow(prd)
             
-            set(state => ({
-              jobs: state.jobs.map(job => 
+            set(state => {
+              const updatedJobs = state.jobs.map(job => 
                 job.id === result.jobId 
                   ? { 
                       ...job, 
@@ -131,12 +190,14 @@ export const useStore = create<AppState>((set, get) => {
                     } 
                   : job
               )
-            }))
+              localStorage.setItem('jobs', JSON.stringify(updatedJobs))
+              return { jobs: updatedJobs }
+            })
           } catch (error) {
             console.error('Failed to generate workflow plan:', error)
             const errorMessage = error instanceof Error ? error.message : String(error)
-            set(state => ({
-              jobs: state.jobs.map(job => 
+            set(state => {
+              const updatedJobs = state.jobs.map(job => 
                 job.id === result.jobId 
                   ? { 
                       ...job, 
@@ -146,7 +207,9 @@ export const useStore = create<AppState>((set, get) => {
                     } 
                   : job
               )
-            }))
+              localStorage.setItem('jobs', JSON.stringify(updatedJobs))
+              return { jobs: updatedJobs }
+            })
           }
         }, 1000)
         
@@ -160,20 +223,30 @@ export const useStore = create<AppState>((set, get) => {
     return ''
   },
   
-  updateJob: (id, updates) => set(state => ({
-    jobs: state.jobs.map(job => 
+  updateJob: (id, updates) => {
+    const newState = get()
+    const updatedJobs = newState.jobs.map(job => 
       job.id === id ? { ...job, ...updates } : job
     )
-  })),
+    set({ jobs: updatedJobs })
+    localStorage.setItem('jobs', JSON.stringify(updatedJobs))
+  },
   
-  setActiveJob: (id) => set({ activeJobId: id }),
+  setActiveJob: (id) => {
+    set({ activeJobId: id })
+    if (id) {
+      localStorage.setItem('active_job_id', id)
+    } else {
+      localStorage.removeItem('active_job_id')
+    }
+  },
   
   approveWorkflowPlan: async (jobId) => {
     const { jobs } = get()
     const job = jobs.find(j => j.id === jobId)
     if (job && job.status === 'ready') {
-      set(state => ({
-        jobs: state.jobs.map(j => 
+      set(state => {
+        const updatedJobs = state.jobs.map(j => 
           j.id === jobId 
             ? { 
                 ...j, 
@@ -182,10 +255,14 @@ export const useStore = create<AppState>((set, get) => {
                 logs: [...j.logs, '✓ Workflow approved', '> Starting execution...']
               }
             : j
-        ),
-        layoutMode: 'executing',
-        focusedPanel: 'output'
-      }))
+        )
+        localStorage.setItem('jobs', JSON.stringify(updatedJobs))
+        return {
+          jobs: updatedJobs,
+          layoutMode: 'executing',
+          focusedPanel: 'output'
+        }
+      })
 
       // Execute the workflow with Claude Code CLI (if available)
       try {
@@ -200,8 +277,8 @@ export const useStore = create<AppState>((set, get) => {
       } catch (error) {
         console.error('Failed to start Claude Code execution:', error)
         const errorMessage = error instanceof Error ? error.message : String(error)
-        set(state => ({
-          jobs: state.jobs.map(j => 
+        set(state => {
+          const updatedJobs = state.jobs.map(j => 
             j.id === jobId 
               ? { 
                   ...j, 
@@ -211,7 +288,9 @@ export const useStore = create<AppState>((set, get) => {
                 }
               : j
           )
-        }))
+          localStorage.setItem('jobs', JSON.stringify(updatedJobs))
+          return { jobs: updatedJobs }
+        })
       }
     }
   },
@@ -220,8 +299,8 @@ export const useStore = create<AppState>((set, get) => {
     const { jobs } = get()
     const job = jobs.find(j => j.id === jobId)
     if (job && job.status === 'ready') {
-      set(state => ({
-        jobs: state.jobs.map(j => 
+      set(state => {
+        const updatedJobs = state.jobs.map(j => 
           j.id === jobId 
             ? { 
                 ...j, 
@@ -230,9 +309,13 @@ export const useStore = create<AppState>((set, get) => {
                 logs: [...j.logs, '✗ Workflow rejected by user']
               }
             : j
-        ),
-        layoutMode: 'editing'
-      }))
+        )
+        localStorage.setItem('jobs', JSON.stringify(updatedJobs))
+        return {
+          jobs: updatedJobs,
+          layoutMode: 'editing'
+        }
+      })
     }
   },
 
@@ -361,6 +444,27 @@ export const useStore = create<AppState>((set, get) => {
       } catch (error) {
         console.error('Failed to stop job:', error)
       }
+    }
+  },
+
+  cancelPlanGeneration: (jobId) => {
+    const { jobs } = get()
+    const job = jobs.find(j => j.id === jobId)
+    if (job && job.status === 'planning') {
+      set(state => {
+        const updatedJobs = state.jobs.map(j => 
+          j.id === jobId 
+            ? { 
+                ...j, 
+                status: 'failed',
+                currentTask: 'Plan generation cancelled by user',
+                logs: [...j.logs, '⏹️ Plan generation cancelled']
+              }
+            : j
+        )
+        localStorage.setItem('jobs', JSON.stringify(updatedJobs))
+        return { jobs: updatedJobs }
+      })
     }
   },
   

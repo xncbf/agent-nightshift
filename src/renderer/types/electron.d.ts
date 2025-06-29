@@ -17,6 +17,9 @@ export interface ElectronAPI {
   onJobUpdate: (callback: (event: any, data: any) => void) => () => void
   onLogUpdate: (callback: (event: any, data: any) => void) => () => void
   
+  // File system
+  selectDirectory: () => Promise<{ filePaths: string[]; canceled: boolean }>
+  
   // AI Provider management
   getAIProviders: () => Promise<Array<{
     id: string

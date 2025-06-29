@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
 const { AIProviderManager } = require('./aiProviderManager')
 
@@ -55,9 +55,10 @@ app.on('window-all-closed', () => {
 
 // Set up AI provider listeners
 function setupProviderListeners() {
-  const provider = aiManager.getProvider()
-  
-  provider.on('output', ({ jobId, data }) => {
+  try {
+    const provider = aiManager.getProvider()
+    
+    provider.on('output', ({ jobId, data }) => {
     const job = activeJobs.get(jobId)
     if (job) {
       job.logs.push(data)
@@ -109,10 +110,14 @@ function setupProviderListeners() {
     mainWindow?.webContents.send('job-log-update', { jobId, logs: job.logs })
   }
   })
+  } catch (error) {
+    console.log('AI Provider not configured yet:', error.message)
+    // This is expected when no provider is set - will be configured later via UI
+  }
 }
 
-// Initialize provider listeners
-setupProviderListeners()
+// Initialize provider listeners - moved to after app ready
+// setupProviderListeners()
 
 // IPC Handlers for AI interactions
 ipcMain.handle('submit-prd', async (event, prd) => {
@@ -207,7 +212,14 @@ ipcMain.handle('execute-workflow', async (event, jobId, prd) => {
   }
   
   // Start real Claude Code execution
-  const result = await aiManager.executePlan(jobId, prd)
+  let result
+  try {
+    result = await aiManager.executePlan(jobId, prd)
+  } catch (error) {
+    // No AI provider configured - this is expected for OpenAI/Claude API usage
+    console.log('AI Provider not configured, using direct API instead')
+    return { success: false, error: 'Please use OpenAI or Claude API directly' }
+  }
   
   if (result.success) {
     job.status = 'running'
@@ -295,5 +307,24 @@ ipcMain.handle('execute-claude', async (event, prompt) => {
     
   } catch (error) {
     return { success: false, error: error.message }
+  }
+})
+
+
+// Select directory dialog
+ipcMain.handle('select-directory', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Select Work Directory for Claude Code Agent'
+    })
+    
+    return {
+      filePaths: result.filePaths,
+      canceled: result.canceled
+    }
+  } catch (error) {
+    console.error('Failed to open directory dialog:', error)
+    return { filePaths: [], canceled: true }
   }
 })

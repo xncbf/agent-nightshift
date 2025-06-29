@@ -40,6 +40,10 @@ interface AppState {
   focusedPanel: 'prd' | 'workflow' | 'output' | null
   setFocusedPanel: (panel: 'prd' | 'workflow' | 'output' | null) => void
   
+  // Work Directory Configuration
+  workDirectory: string
+  setWorkDirectory: (path: string) => void
+  
   // AI Configuration
   aiProvider: 'openai' | 'claude'
   setAiProvider: (provider: 'openai' | 'claude') => void
@@ -63,6 +67,7 @@ export const useStore = create<AppState>((set, get) => {
   const savedProvider = (localStorage.getItem('ai_provider') as 'openai' | 'claude') || 'openai'
   const savedOpenaiModel = (localStorage.getItem('openai_model') as 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo') || 'gpt-4o-mini'
   const savedClaudeModel = (localStorage.getItem('claude_model') as 'claude-sonnet-4-0' | 'claude-opus-4-0') || 'claude-sonnet-4-0'
+  const savedWorkDirectory = localStorage.getItem('work_directory') || '/Users/joon/projects'
   
   // Load saved PRD and jobs
   const savedPRD = localStorage.getItem('current_prd') || ''
@@ -596,6 +601,13 @@ export const useStore = create<AppState>((set, get) => {
   setLayoutMode: (mode) => set({ layoutMode: mode }),
   focusedPanel: null,
   setFocusedPanel: (panel) => set({ focusedPanel: panel }),
+  
+  // Work Directory Configuration
+  workDirectory: savedWorkDirectory,
+  setWorkDirectory: (path: string) => {
+    set({ workDirectory: path })
+    localStorage.setItem('work_directory', path)
+  },
   
   // AI Configuration
   aiProvider: savedProvider,

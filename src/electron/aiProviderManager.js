@@ -1,4 +1,4 @@
-const { ClaudeCodeProvider } = require('./aiProviders/claudeCodeProvider')
+// const { ClaudeCodeProvider } = require('./aiProviders/claudeCodeProvider')
 // Future providers can be imported here
 // const { OpenAIProvider } = require('./aiProviders/openAIProvider')
 // const { GeminiProvider } = require('./aiProviders/geminiProvider')

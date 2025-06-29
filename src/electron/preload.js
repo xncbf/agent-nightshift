@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('job-log-update', callback)
   },
   
+  // File system
+  selectDirectory: () => ipcRenderer.invoke('select-directory'),
+  
   // AI Provider management
   getAIProviders: () => ipcRenderer.invoke('get-ai-providers'),
   getCurrentProvider: () => ipcRenderer.invoke('get-current-provider'),

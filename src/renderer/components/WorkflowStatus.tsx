@@ -4,11 +4,12 @@ import { WorkflowDAG } from './WorkflowDAG'
 import { PlanEditor } from './PlanEditor'
 import { ProgressView } from './ProgressView'
 import { TaskNode, WorkflowPlan } from '../types/workflow'
-import { BarChart3, Network, CheckCircle, XCircle, Clock, List, Activity } from 'lucide-react'
+import { BarChart3, Network, CheckCircle, XCircle, Clock, List, Activity, Folder, Settings } from 'lucide-react'
 
 export const WorkflowStatus: React.FC = () => {
-  const { jobs, activeJobId, approveWorkflowPlan, rejectWorkflowPlan, updateJob } = useStore()
+  const { jobs, activeJobId, approveWorkflowPlan, rejectWorkflowPlan, updateJob, workDirectory, setWorkDirectory } = useStore()
   const activeJob = jobs.find(job => job.id === activeJobId)
+  const [showDirectorySettings, setShowDirectorySettings] = useState(false)
   // Set default view mode based on job status
   const getDefaultViewMode = () => {
     if (!activeJob) return 'dag'
@@ -127,6 +128,20 @@ export const WorkflowStatus: React.FC = () => {
             <button
               onClick={(e) => {
                 e.stopPropagation()
+                setShowDirectorySettings(!showDirectorySettings)
+              }}
+              className="p-2 rounded-lg transition-colors"
+              style={{
+                backgroundColor: showDirectorySettings ? 'var(--color-nightshift-accent)' : 'var(--color-nightshift-darker)',
+                color: showDirectorySettings ? 'white' : '#9ca3af'
+              }}
+              title="Work Directory Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
                 setViewMode('dag')
               }}
               className="p-2 rounded-lg transition-colors"
@@ -199,6 +214,54 @@ export const WorkflowStatus: React.FC = () => {
               <XCircle className="w-4 h-4" />
               Reject
             </button>
+          </div>
+        )}
+        
+        {/* Work Directory Settings */}
+        {showDirectorySettings && (
+          <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: 'var(--color-nightshift-darker)', border: '1px solid var(--color-nightshift-accent)' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <Folder className="w-4 h-4" />
+              <h3 className="font-medium">Work Directory</h3>
+            </div>
+            <p className="text-sm text-gray-400 mb-3">
+              Claude Code agent will execute commands in this directory
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={workDirectory}
+                onChange={(e) => setWorkDirectory(e.target.value)}
+                placeholder="/path/to/your/project"
+                className="flex-1 px-3 py-2 rounded-md text-sm"
+                style={{
+                  backgroundColor: 'var(--color-nightshift-light)',
+                  border: '1px solid var(--color-nightshift-accent)',
+                  color: 'white'
+                }}
+              />
+              <button
+                onClick={async () => {
+                  try {
+                    // Use Electron's file dialog to select directory
+                    const result = await window.electronAPI.selectDirectory()
+                    if (result.filePaths && result.filePaths.length > 0) {
+                      setWorkDirectory(result.filePaths[0])
+                    }
+                  } catch (error) {
+                    console.warn('Directory selection not implemented yet')
+                  }
+                }}
+                className="px-3 py-2 rounded-md text-sm"
+                style={{ backgroundColor: 'var(--color-nightshift-accent)', color: 'white' }}
+                title="Browse for directory"
+              >
+                Browse
+              </button>
+            </div>
+            <div className="mt-2 text-xs text-gray-500">
+              Current: {workDirectory}
+            </div>
           </div>
         )}
       </div>

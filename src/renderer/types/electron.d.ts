@@ -1,6 +1,6 @@
 export interface ElectronAPI {
   // Job management
-  submitPRD: (prd: string) => Promise<{ success: boolean; jobId?: string; error?: string }>
+  submitPRD: (prd: string) => Promise<{ success: boolean; jobId: string }>
   getJobStatus: (jobId: string) => Promise<{
     status: string
     progress: number

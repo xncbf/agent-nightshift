@@ -185,91 +185,202 @@ async function executeTask(
   jobId: string, 
   task: any, 
   workDirectory: string, 
-  aiProvider: string,
-  openaiModel: string,
-  claudeModel: string
+  _aiProvider: string, // Keep for interface compatibility
+  _openaiModel: string,
+  _claudeModel: string
 ) {
   const { updateJob } = useStore.getState()
   
-  // Create prompt for the task
-  const prompt = `You are executing a task in a workflow. Please complete this task:
+  // Create prompt for Claude Code CLI
+  const prompt = `Task: ${task.title}
 
-Task: ${task.title}
 Description: ${task.description}
+
 Working Directory: ${workDirectory}
 
-Please:
-1. Analyze what needs to be done
-2. Execute the necessary commands
-3. Create any required files
-4. Verify the task is completed successfully
-
-Important: You are working in the directory ${workDirectory}. All file operations should be relative to this directory.`
+Please complete this task step by step. You have access to all MCP tools for file operations, terminal commands, and any other capabilities you need. Work in the specified directory and complete the task fully.`
 
   try {
-    // Send to appropriate AI service
-    let result
-    if (aiProvider === 'openai') {
-      const { openaiService } = await import('../services/openaiService')
-      result = await openaiService.generateCompletion(prompt)
-    } else {
-      const { claudeApiService } = await import('../services/claudeApiService')
-      result = await claudeApiService.generateCompletion(prompt)
-    }
+    // Create terminal for this task and initialize with Claude
+    await initializeClaudeTerminal(task.id, workDirectory)
 
-    // Log the AI response
+    // Log the task start
     const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
     if (currentJob) {
       updateJob(jobId, {
-        logs: [...(currentJob.logs || []), `🤖 Task ${task.title}: ${result}`]
+        logs: [...(currentJob.logs || []), `🚀 Starting task: ${task.title}`]
       })
     }
 
-    // Execute commands via terminal if the AI suggests specific commands
-    if (result.includes('```bash') || result.includes('```sh')) {
-      const commands = extractCommands(result)
-      for (const command of commands) {
-        await executeCommand(command, task.id, workDirectory)
-      }
+    // Send prompt to waiting Claude instance
+    await sendPromptToClaudeTerminal(prompt, task.id)
+
+    // Log task completion (Note: in reality we'd monitor output to detect completion)
+    const updatedJob = useStore.getState().jobs.find(j => j.id === jobId)
+    if (updatedJob) {
+      updateJob(jobId, {
+        logs: [...(updatedJob.logs || []), `✅ Task sent to Claude: ${task.title}`]
+      })
     }
 
-  } catch (error) {
-    throw new Error(`Failed to execute task: ${error.message}`)
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    throw new Error(`Failed to execute task: ${errorMessage}`)
   }
 }
 
-// Extract bash commands from AI response
-function extractCommands(text: string): string[] {
-  const commands: string[] = []
-  const bashBlocks = text.match(/```(?:bash|sh)\n([\s\S]*?)```/g)
-  
-  if (bashBlocks) {
-    bashBlocks.forEach(block => {
-      const commandText = block.replace(/```(?:bash|sh)\n/, '').replace(/```$/, '')
-      const lines = commandText.split('\n').filter(line => 
-        line.trim() && !line.trim().startsWith('#')
-      )
-      commands.push(...lines)
-    })
-  }
-  
-  return commands
-}
-
-// Execute command in specific terminal
-async function executeCommand(command: string, terminalId: string, workDirectory: string) {
+// Initialize terminal with Claude Code CLI in interactive mode
+async function initializeClaudeTerminal(terminalId: string, workDirectory: string) {
   try {
-    // Create terminal for this task if not exists
-    await window.electronAPI.createTerminal(workDirectory, terminalId)
+    // Create terminal for this task
+    const terminalResult = await window.electronAPI.createTerminal(workDirectory, terminalId)
+    if (!terminalResult.success) {
+      throw new Error(`Failed to create terminal: ${terminalResult.error}`)
+    }
+
+    // Set up terminal output monitoring
+    let terminalOutput = ''
+    let isClaudeReady = false
     
-    // Send command to terminal
-    await window.electronAPI.sendTerminalInput(command + '\n', terminalId)
+    const outputHandler = (_event: any, data: { terminalId: string; data: string }) => {
+      if (data.terminalId === terminalId) {
+        terminalOutput += data.data
+        
+        // Check for Claude startup indicators
+        if (terminalOutput.includes('Welcome to Claude Code!') || 
+            terminalOutput.includes('claude>') ||
+            terminalOutput.includes('cwd:')) {
+          isClaudeReady = true
+        }
+      }
+    }
     
-    // Wait a bit for command to execute
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    const unsubscribe = (window.electronAPI as any).onTerminalData(outputHandler)
+
+    // Change to working directory
+    await (window.electronAPI as any).sendTerminalInput(`cd "${workDirectory}"\n`, terminalId)
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // Check if Claude is already running by looking at current output
+    if (terminalOutput.includes('Welcome to Claude Code!') || terminalOutput.includes('cwd:')) {
+      console.log(`Claude Code already running in terminal ${terminalId}`)
+      isClaudeReady = true
+    } else {
+      // Start Claude Code CLI in interactive mode
+      await (window.electronAPI as any).sendTerminalInput('claude\n', terminalId)
+    }
+    
+    // Wait for Claude to be ready (with timeout)
+    const startTime = Date.now()
+    const timeout = 10000 // 10 seconds timeout
+    
+    while (!isClaudeReady && (Date.now() - startTime) < timeout) {
+      await new Promise(resolve => setTimeout(resolve, 200))
+    }
+    
+    // Clean up listener
+    unsubscribe()
+    
+    if (!isClaudeReady) {
+      throw new Error(`Claude Code CLI did not start within ${timeout/1000} seconds. Output: ${terminalOutput}`)
+    }
+    
+    console.log(`✅ Claude Code ready in terminal ${terminalId}`)
+    
   } catch (error) {
-    console.error('Failed to execute command:', error)
+    console.error('Failed to initialize Claude terminal:', error)
+    throw error
   }
+}
+
+// Send prompt to Claude that's already running in terminal
+async function sendPromptToClaudeTerminal(prompt: string, terminalId: string) {
+  try {
+    // Set up output monitoring to detect when Claude finishes
+    let terminalOutput = ''
+    let isTaskComplete = false
+    
+    const outputHandler = (_event: any, data: { terminalId: string; data: string }) => {
+      if (data.terminalId === terminalId) {
+        terminalOutput += data.data
+        
+        // Check for task completion indicators
+        if (isClaudeCommandComplete(terminalOutput)) {
+          isTaskComplete = true
+        }
+      }
+    }
+    
+    const unsubscribe = (window.electronAPI as any).onTerminalData(outputHandler)
+    
+    // Send the entire prompt as one input to Claude
+    await (window.electronAPI as any).sendTerminalInput(prompt, terminalId)
+    
+    // Send Enter to execute the prompt
+    await (window.electronAPI as any).sendTerminalInput('\n', terminalId)
+    
+    // Wait for task completion (with timeout)
+    const startTime = Date.now()
+    const timeout = 300000 // 5 minutes timeout for task execution
+    
+    while (!isTaskComplete && (Date.now() - startTime) < timeout) {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    
+    // Clean up listener
+    unsubscribe()
+    
+    if (!isTaskComplete) {
+      console.warn(`Task did not complete within ${timeout/1000} seconds in terminal ${terminalId}`)
+      // Don't throw error, let it continue - user can monitor in terminal
+    } else {
+      console.log(`✅ Task completed in terminal ${terminalId}`)
+    }
+    
+  } catch (error) {
+    console.error('Failed to send prompt to Claude terminal:', error)
+    throw error
+  }
+}
+
+// Helper function to detect Claude Code CLI completion
+export function isClaudeCommandComplete(terminalOutput: string): boolean {
+  // Check for Claude Code completion patterns
+  const lines = terminalOutput.split('\n')
+  const lastFewLines = lines.slice(-10).join('\n') // Check last 10 lines
+  
+  // Look for Claude's completion indicators
+  const completionIndicators = [
+    '🎉',
+    '✅',
+    'Task completed',
+    'task completed',
+    'Successfully completed',
+    'successfully completed',
+    'Done!',
+    'done!',
+    'Finished',
+    'finished',
+    'All set!',
+    'all set!'
+  ]
+  
+  const hasCompletionIndicator = completionIndicators.some(indicator => 
+    lastFewLines.toLowerCase().includes(indicator.toLowerCase())
+  )
+  
+  // Also check if we're back at a shell prompt (but not immediately after starting)
+  const hasShellPrompt = lastFewLines.includes('$ ') || 
+                        lastFewLines.includes('% ') ||
+                        lastFewLines.includes('❯ ')
+  
+  // Look for error indicators
+  const hasError = lastFewLines.includes('Error:') || 
+                  lastFewLines.includes('error:') ||
+                  lastFewLines.includes('Failed:') ||
+                  lastFewLines.includes('failed:')
+  
+  return (hasCompletionIndicator || hasShellPrompt) && !hasError
 }
 
 export const useStore = create<AppState>((set, get) => {
@@ -545,7 +656,7 @@ export const useStore = create<AppState>((set, get) => {
     if (job && job.status === 'running') {
       try {
         if ((window.electronAPI as any).pauseJob) {
-          const result = await window.electronAPI.pauseJob(jobId)
+          const result = await (window.electronAPI as any).pauseJob(jobId)
           if (result.success) {
             set(state => ({
               jobs: state.jobs.map(j => 
@@ -587,7 +698,7 @@ export const useStore = create<AppState>((set, get) => {
     if (job && job.status === 'paused') {
       try {
         if ((window.electronAPI as any).resumeJob) {
-          const result = await window.electronAPI.resumeJob(jobId)
+          const result = await (window.electronAPI as any).resumeJob(jobId)
           if (result.success) {
             set(state => ({
               jobs: state.jobs.map(j => 
@@ -629,7 +740,7 @@ export const useStore = create<AppState>((set, get) => {
     if (job && (job.status === 'running' || job.status === 'paused')) {
       try {
         if ((window.electronAPI as any).stopJob) {
-          const result = await window.electronAPI.stopJob(jobId)
+          const result = await (window.electronAPI as any).stopJob(jobId)
           if (result.success) {
             set(state => {
               const updatedJobs = state.jobs.map(j => {

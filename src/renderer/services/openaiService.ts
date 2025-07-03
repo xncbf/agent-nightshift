@@ -190,6 +190,30 @@ Return JSON format:
 
     return JSON.parse(response.choices[0].message.content || '{}');
   }
+
+  async generateCompletion(prompt: string): Promise<string> {
+    if (!this.client) {
+      throw new Error('OpenAI API key not configured');
+    }
+
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a helpful AI assistant that executes development tasks. 
+When given a task, provide clear instructions and any necessary bash commands.
+Format bash commands in code blocks with \`\`\`bash or \`\`\`sh.
+Be concise and action-oriented.`
+        },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000
+    });
+
+    return response.choices[0].message.content || '';
+  }
 }
 
 export const openaiService = new OpenAIService();

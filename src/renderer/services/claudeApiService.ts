@@ -197,6 +197,26 @@ Return JSON format:
     const responseText = response.content[0].type === 'text' ? response.content[0].text : '{}';
     return JSON.parse(responseText);
   }
+
+  async generateCompletion(prompt: string): Promise<string> {
+    if (!this.client) {
+      throw new Error('Claude API key not configured');
+    }
+
+    const response = await this.client.messages.create({
+      model: this.model,
+      max_tokens: 2000,
+      system: `You are a helpful AI assistant that executes development tasks. 
+When given a task, provide clear instructions and any necessary bash commands.
+Format bash commands in code blocks with \`\`\`bash or \`\`\`sh.
+Be concise and action-oriented.`,
+      messages: [
+        { role: 'user', content: prompt }
+      ]
+    });
+
+    return response.content[0].type === 'text' ? response.content[0].text : '';
+  }
 }
 
 export const claudeApiService = new ClaudeApiService();

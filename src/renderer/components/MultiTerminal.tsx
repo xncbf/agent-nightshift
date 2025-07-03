@@ -135,6 +135,7 @@ export const MultiTerminal: React.FC = () => {
 
     // Handle input
     const inputDisposable = term.onData((data: string) => {
+      console.log(`Terminal ${id} input:`, data)
       window.electronAPI.sendTerminalInput(data, id)
     })
 
@@ -142,7 +143,8 @@ export const MultiTerminal: React.FC = () => {
       id,
       title,
       terminal: term,
-      fitAddon
+      fitAddon,
+      element: undefined
     }
 
     setTerminals(prev => new Map(prev).set(id, newTab))
@@ -152,6 +154,8 @@ export const MultiTerminal: React.FC = () => {
       unsubscribe()
       inputDisposable.dispose()
     }
+    
+    console.log(`Terminal ${id} created successfully`)
   }
 
   const closeTerminal = (id: string) => {
@@ -186,15 +190,28 @@ export const MultiTerminal: React.FC = () => {
       termDiv.style.height = '100%'
       containerRef.current.appendChild(termDiv)
       
-      // Open terminal in div
-      activeTab.terminal.open(termDiv)
-      activeTab.fitAddon.fit()
+      // Open terminal in div (only if not already opened)
+      if (!activeTab.element) {
+        activeTab.terminal.open(termDiv)
+        activeTab.element = termDiv
+        activeTab.fitAddon.fit()
+        
+        // Focus the terminal to enable input
+        activeTab.terminal.focus()
+      } else {
+        // Move existing terminal to new container
+        containerRef.current.appendChild(activeTab.element)
+        activeTab.fitAddon.fit()
+        activeTab.terminal.focus()
+      }
       
       // Handle resize
       const resizeObserver = new ResizeObserver(() => {
-        activeTab.fitAddon.fit()
+        if (activeTab.fitAddon) {
+          activeTab.fitAddon.fit()
+        }
       })
-      resizeObserver.observe(termDiv)
+      resizeObserver.observe(containerRef.current)
       
       return () => {
         resizeObserver.disconnect()

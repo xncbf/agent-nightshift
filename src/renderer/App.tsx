@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { PromptsEditor } from './components/PromptsEditor'
 import { WorkflowStatus } from './components/WorkflowStatus'
-import { MultiTerminal } from './components/MultiTerminal'
+import { TabbedTerminal } from './components/TabbedTerminal'
 import { Footer } from './components/Footer'
 import { LayoutTransition } from './components/LayoutTransition'
 import { useStore } from './store/useStore'
@@ -78,14 +78,15 @@ function App() {
     }
   }, [updateJob])
 
-  // Re-enable simulation to test long logs
+  // Simulation disabled - using real execution now
   useEffect(() => {
-    console.log('Simulation re-enabled for testing long logs')
+    console.log('Real workflow execution enabled')
     return () => {}
   }, [])
   
-  // SIMULATION CODE - RE-ENABLED FOR TESTING
+  // SIMULATION CODE - DISABLED FOR REAL EXECUTION
   useEffect(() => {
+    return () => {} // Simulation disabled
     
     const interval = setInterval(() => {
       const { jobs, updateJob } = useStore.getState()
@@ -452,7 +453,7 @@ function App() {
           }}
         >
           <div className="layout-panel-content h-full">
-            <MultiTerminal />
+            <TabbedTerminal />
           </div>
         </section>
       </main>

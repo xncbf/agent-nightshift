@@ -231,13 +231,25 @@
   .xterm {
     padding: 12px;
     height: 100%;
+    width: 100%;
   }
 
   .xterm-viewport {
     background-color: transparent !important;
+    width: 100% !important;
   }
 
   .xterm-screen {
     margin: 0;
+    width: 100%;
+  }
+  
+  /* Ensure terminal container has dimensions */
+  .xterm-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
   }
 }

@@ -68,6 +68,210 @@ interface AppState {
   isAIConfigured: boolean
 }
 
+// Workflow execution function
+async function executeWorkflowTasks(jobId: string, job: any) {
+  const { workflowPlan, prd } = job
+  if (!workflowPlan) return
+
+  const { updateJob, workDirectory, aiProvider, openaiModel, claudeModel } = useStore.getState()
+  
+  // Get task nodes and sort by dependencies
+  const taskNodes = workflowPlan.nodes.filter((n: any) => n.type === 'task')
+  
+  // Update all tasks to pending except start
+  const resetNodes = workflowPlan.nodes.map((node: any) => ({
+    ...node,
+    status: node.type === 'start' ? 'completed' : 'pending'
+  }))
+  
+  updateJob(jobId, {
+    workflowPlan: { ...workflowPlan, nodes: resetNodes }
+  })
+
+  // Execute tasks in dependency order
+  const completedTasks = new Set(['start'])
+  const runningTasks = new Set()
+
+  while (completedTasks.size - 1 < taskNodes.length) { // -1 for start node
+    // Find tasks that can run (all dependencies completed)
+    const readyTasks = taskNodes.filter((task: any) => 
+      task.status === 'pending' && 
+      task.dependencies.every((dep: string) => completedTasks.has(dep)) &&
+      !runningTasks.has(task.id)
+    )
+
+    if (readyTasks.length === 0) {
+      // Check if we have running tasks
+      if (runningTasks.size > 0) {
+        // Wait for running tasks to complete
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        continue
+      } else {
+        // No ready tasks and no running tasks - workflow stuck
+        break
+      }
+    }
+
+    // Start ready tasks
+    for (const task of readyTasks) {
+      runningTasks.add(task.id)
+      executeTask(jobId, task, workDirectory, aiProvider, openaiModel, claudeModel)
+        .then(() => {
+          runningTasks.delete(task.id)
+          completedTasks.add(task.id)
+          
+          // Update task status to completed
+          const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
+          if (currentJob?.workflowPlan) {
+            const updatedNodes = currentJob.workflowPlan.nodes.map((n: any) =>
+              n.id === task.id ? { ...n, status: 'completed' } : n
+            )
+            updateJob(jobId, {
+              workflowPlan: { ...currentJob.workflowPlan, nodes: updatedNodes },
+              progress: Math.round((completedTasks.size - 1) / taskNodes.length * 100)
+            })
+          }
+        })
+        .catch((error) => {
+          runningTasks.delete(task.id)
+          console.error(`Task ${task.id} failed:`, error)
+          
+          // Update task status to failed
+          const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
+          if (currentJob?.workflowPlan) {
+            const updatedNodes = currentJob.workflowPlan.nodes.map((n: any) =>
+              n.id === task.id ? { ...n, status: 'failed' } : n
+            )
+            updateJob(jobId, {
+              workflowPlan: { ...currentJob.workflowPlan, nodes: updatedNodes },
+              logs: [...(currentJob.logs || []), `❌ Task ${task.title} failed: ${error.message}`]
+            })
+          }
+        })
+
+      // Update task status to running
+      const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
+      if (currentJob?.workflowPlan) {
+        const updatedNodes = currentJob.workflowPlan.nodes.map((n: any) =>
+          n.id === task.id ? { ...n, status: 'running' } : n
+        )
+        updateJob(jobId, {
+          workflowPlan: { ...currentJob.workflowPlan, nodes: updatedNodes },
+          currentTask: `Executing: ${task.title}`
+        })
+      }
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+
+  // Check if all tasks completed successfully
+  const finalJob = useStore.getState().jobs.find(j => j.id === jobId)
+  if (finalJob?.workflowPlan) {
+    const allTasksCompleted = taskNodes.every((task: any) => 
+      finalJob.workflowPlan!.nodes.find((n: any) => n.id === task.id)?.status === 'completed'
+    )
+    
+    updateJob(jobId, {
+      status: allTasksCompleted ? 'completed' : 'failed',
+      currentTask: allTasksCompleted ? 'All tasks completed!' : 'Some tasks failed',
+      progress: 100
+    })
+  }
+}
+
+// Execute individual task
+async function executeTask(
+  jobId: string, 
+  task: any, 
+  workDirectory: string, 
+  aiProvider: string,
+  openaiModel: string,
+  claudeModel: string
+) {
+  const { updateJob } = useStore.getState()
+  
+  // Create prompt for the task
+  const prompt = `You are executing a task in a workflow. Please complete this task:
+
+Task: ${task.title}
+Description: ${task.description}
+Working Directory: ${workDirectory}
+
+Please:
+1. Analyze what needs to be done
+2. Execute the necessary commands
+3. Create any required files
+4. Verify the task is completed successfully
+
+Important: You are working in the directory ${workDirectory}. All file operations should be relative to this directory.`
+
+  try {
+    // Send to appropriate AI service
+    let result
+    if (aiProvider === 'openai') {
+      const { openaiService } = await import('../services/openaiService')
+      result = await openaiService.generateCompletion(prompt)
+    } else {
+      const { claudeApiService } = await import('../services/claudeApiService')
+      result = await claudeApiService.generateCompletion(prompt)
+    }
+
+    // Log the AI response
+    const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
+    if (currentJob) {
+      updateJob(jobId, {
+        logs: [...(currentJob.logs || []), `🤖 Task ${task.title}: ${result}`]
+      })
+    }
+
+    // Execute commands via terminal if the AI suggests specific commands
+    if (result.includes('```bash') || result.includes('```sh')) {
+      const commands = extractCommands(result)
+      for (const command of commands) {
+        await executeCommand(command, task.id, workDirectory)
+      }
+    }
+
+  } catch (error) {
+    throw new Error(`Failed to execute task: ${error.message}`)
+  }
+}
+
+// Extract bash commands from AI response
+function extractCommands(text: string): string[] {
+  const commands: string[] = []
+  const bashBlocks = text.match(/```(?:bash|sh)\n([\s\S]*?)```/g)
+  
+  if (bashBlocks) {
+    bashBlocks.forEach(block => {
+      const commandText = block.replace(/```(?:bash|sh)\n/, '').replace(/```$/, '')
+      const lines = commandText.split('\n').filter(line => 
+        line.trim() && !line.trim().startsWith('#')
+      )
+      commands.push(...lines)
+    })
+  }
+  
+  return commands
+}
+
+// Execute command in specific terminal
+async function executeCommand(command: string, terminalId: string, workDirectory: string) {
+  try {
+    // Create terminal for this task if not exists
+    await window.electronAPI.createTerminal(workDirectory, terminalId)
+    
+    // Send command to terminal
+    await window.electronAPI.sendTerminalInput(command + '\n', terminalId)
+    
+    // Wait a bit for command to execute
+    await new Promise(resolve => setTimeout(resolve, 2000))
+  } catch (error) {
+    console.error('Failed to execute command:', error)
+  }
+}
+
 export const useStore = create<AppState>((set, get) => {
   // Load saved preferences from localStorage
   const savedOpenaiApiKey = localStorage.getItem('openai_api_key') || ''
@@ -286,18 +490,12 @@ export const useStore = create<AppState>((set, get) => {
         }
       })
 
-      // Execute the workflow with Claude Code CLI (if available)
+      // Execute the workflow tasks
       try {
-        console.log('Starting Claude Code execution for job:', jobId)
-        // Note: executeWorkflow may not be implemented yet in Electron API
-        if ((window.electronAPI as any).executeWorkflow) {
-          const result = await window.electronAPI.executeWorkflow(jobId, job.prd)
-          console.log('Claude Code execution started:', result)
-        } else {
-          console.log('executeWorkflow not implemented yet - using simulation')
-        }
+        console.log('Starting workflow execution for job:', jobId)
+        await executeWorkflowTasks(jobId, job)
       } catch (error) {
-        console.error('Failed to start Claude Code execution:', error)
+        console.error('Failed to start workflow execution:', error)
         const errorMessage = error instanceof Error ? error.message : String(error)
         set(state => {
           const updatedJobs = state.jobs.map(j => 

@@ -98,7 +98,7 @@ export class WorkflowAI {
           status: 'pending',
           position: { x: xOffset, y: yPos },
           duration: 5,
-          dependencies: task.dependencies || ['start']
+          dependencies: (task.dependencies && task.dependencies.length > 0) ? task.dependencies : ['start']
         }
         nodes.push(node)
         

@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { AIPrompts } from './prompts';
 
 class ClaudeApiService {
   private client: Anthropic | null = null;
@@ -42,47 +43,11 @@ class ClaudeApiService {
       throw new Error('Claude API key not configured');
     }
 
-    const systemPrompt = `You are a task analyzer. Given multiple prompts, determine if they should be executed in parallel or sequentially.
-Consider dependencies between tasks and return a structured execution plan.
-
-Rules:
-- If tasks are independent, suggest parallel execution
-- If tasks have dependencies or build on each other, suggest sequential execution
-- Identify explicit dependencies between tasks
-
-Return JSON format:
-{
-  "executionType": "parallel" | "sequential",
-  "tasks": [
-    {
-      "id": "task1",
-      "prompt": "original prompt",
-      "dependencies": [] // array of task ids this depends on
-    }
-  ]
-}`;
-
-    const extractionPrompt = `Extract individual tasks/prompts from the following text. 
-The text might be:
-- A single task
-- Multiple tasks separated by newlines
-- A numbered list (1., 2., etc.)
-- A bullet list (-, *, •)
-- Mixed format
-
-Extract each distinct task as a separate item. Clean up formatting but preserve the intent.
-
-Text:
-${content}
-
-Return a JSON array of extracted prompts:
-{ "prompts": ["task 1", "task 2", ...] }`;
-
     const extractResponse = await this.client.messages.create({
       model: this.model,
       max_tokens: 4000,
       messages: [
-        { role: 'user', content: extractionPrompt }
+        { role: 'user', content: AIPrompts.getTaskExtractionUserPrompt(content) }
       ]
     });
 
@@ -103,9 +68,9 @@ Return a JSON array of extracted prompts:
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 4000,
-      system: systemPrompt,
+      system: AIPrompts.getTaskAnalysisSystemPrompt(),
       messages: [
-        { role: 'user', content: `Analyze these prompts:\n${prompts.map((p, i) => `${i + 1}. ${p}`).join('\n')}` }
+        { role: 'user', content: AIPrompts.getTaskAnalysisUserPrompt(prompts) }
       ]
     });
 
@@ -125,32 +90,12 @@ Return a JSON array of extracted prompts:
       throw new Error('Claude API key not configured');
     }
 
-    const systemPrompt = `You are a task analyzer. Given multiple prompts, determine if they should be executed in parallel or sequentially.
-Consider dependencies between tasks and return a structured execution plan.
-
-Rules:
-- If tasks are independent, suggest parallel execution
-- If tasks have dependencies or build on each other, suggest sequential execution
-- Identify explicit dependencies between tasks
-
-Return JSON format:
-{
-  "executionType": "parallel" | "sequential",
-  "tasks": [
-    {
-      "id": "task1",
-      "prompt": "original prompt",
-      "dependencies": [] // array of task ids this depends on
-    }
-  ]
-}`;
-
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 4000,
-      system: systemPrompt,
+      system: AIPrompts.getTaskAnalysisSystemPrompt(),
       messages: [
-        { role: 'user', content: `Analyze these prompts:\n${prompts.map((p, i) => `${i + 1}. ${p}`).join('\n')}` }
+        { role: 'user', content: AIPrompts.getTaskAnalysisUserPrompt(prompts) }
       ]
     });
 
@@ -165,30 +110,17 @@ Return JSON format:
       name: string;
       description: string;
       type: 'code' | 'research' | 'test' | 'deploy';
+      dependencies?: string[];
     }>;
   }> {
     if (!this.client) {
       throw new Error('Claude API key not configured');
     }
 
-    const systemPrompt = `You are a development task planner. Create a concise execution plan.
-Return JSON format:
-{
-  "title": "Brief title",
-  "tasks": [
-    {
-      "id": "unique_id",
-      "name": "Task name",
-      "description": "What to do",
-      "type": "code" | "research" | "test" | "deploy"
-    }
-  ]
-}`;
-
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 4000,
-      system: systemPrompt,
+      system: AIPrompts.getPlanGenerationSystemPrompt(),
       messages: [
         { role: 'user', content: prompt }
       ]
@@ -206,10 +138,7 @@ Return JSON format:
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 2000,
-      system: `You are a helpful AI assistant that executes development tasks. 
-When given a task, provide clear instructions and any necessary bash commands.
-Format bash commands in code blocks with \`\`\`bash or \`\`\`sh.
-Be concise and action-oriented.`,
+      system: AIPrompts.getTaskCompletionSystemPrompt(),
       messages: [
         { role: 'user', content: prompt }
       ]

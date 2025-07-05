@@ -94,11 +94,25 @@ async function executeWorkflowTasks(jobId: string, job: any) {
 
   while (completedTasks.size - 1 < taskNodes.length) { // -1 for start node
     // Find tasks that can run (all dependencies completed)
-    const readyTasks = taskNodes.filter((task: any) => 
-      task.status === 'pending' && 
-      task.dependencies.every((dep: string) => completedTasks.has(dep)) &&
-      !runningTasks.has(task.id)
-    )
+    const readyTasks = taskNodes.filter((task: any) => {
+      const isReady = task.status === 'pending' && 
+        task.dependencies.every((dep: string) => completedTasks.has(dep)) &&
+        !runningTasks.has(task.id)
+      
+      // Debug log
+      if (task.status === 'pending') {
+        console.log(`Task ${task.id} check:`, {
+          status: task.status,
+          dependencies: task.dependencies,
+          completedTasks: Array.from(completedTasks),
+          depsCompleted: task.dependencies.every((dep: string) => completedTasks.has(dep)),
+          isRunning: runningTasks.has(task.id),
+          isReady
+        })
+      }
+      
+      return isReady
+    })
 
     if (readyTasks.length === 0) {
       // Check if we have running tasks
@@ -119,6 +133,8 @@ async function executeWorkflowTasks(jobId: string, job: any) {
         .then(() => {
           runningTasks.delete(task.id)
           completedTasks.add(task.id)
+          
+          console.log(`Task ${task.id} completed. CompletedTasks:`, Array.from(completedTasks))
           
           // Update task status to completed
           const currentJob = useStore.getState().jobs.find(j => j.id === jobId)

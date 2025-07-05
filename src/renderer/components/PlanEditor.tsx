@@ -16,6 +16,13 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
   }>({ title: '', description: '', dependencies: [] })
 
   const handleEditStart = (node: TaskNode) => {
+    console.log('Editing node:', {
+      id: node.id,
+      title: node.title,
+      dependencies: node.dependencies,
+      nodeDependencies: node.dependencies || []
+    })
+    
     setEditingNodeId(node.id)
     setEditForm({
       title: node.title,
@@ -38,10 +45,52 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
         : node
     )
 
+    // Update edges based on new dependencies
+    const editedNode = updatedNodes.find(n => n.id === editingNodeId)
+    if (!editedNode) return
+
+    // Remove old edges pointing to this node
+    let updatedEdges = workflowPlan.edges.filter(e => e.target !== editingNodeId)
+
+    // Add new edges based on dependencies
+    if (editForm.dependencies.length === 0) {
+      // If no dependencies, connect from start
+      updatedEdges.push({ 
+        id: `start-${editingNodeId}`, 
+        source: 'start', 
+        target: editingNodeId 
+      })
+    } else {
+      // Create edges from each dependency
+      editForm.dependencies.forEach(depId => {
+        updatedEdges.push({ 
+          id: `${depId}-${editingNodeId}`, 
+          source: depId, 
+          target: editingNodeId 
+        })
+      })
+    }
+
+    // Ensure edges to nodes that depend on this one are preserved
+    workflowPlan.edges.forEach(edge => {
+      if (edge.source === editingNodeId && !updatedEdges.find(e => e.id === edge.id)) {
+        updatedEdges.push(edge)
+      }
+    })
+
     const updatedPlan = {
       ...workflowPlan,
-      nodes: updatedNodes
+      nodes: updatedNodes,
+      edges: updatedEdges
     }
+
+    // Debug log to verify updates
+    console.log('Updated task dependencies:', {
+      taskId: editingNodeId,
+      oldDependencies: workflowPlan.nodes.find(n => n.id === editingNodeId)?.dependencies,
+      newDependencies: editForm.dependencies,
+      newEdges: updatedEdges.filter(e => e.target === editingNodeId)
+    })
 
     onPlanUpdate(updatedPlan)
     setEditingNodeId(null)
@@ -252,6 +301,10 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
                       <span className="text-xs text-gray-400">(tasks that must complete before this one)</span>
                     </span>
                   </label>
+                  {/* Debug: Show current dependencies */}
+                  <div className="text-xs text-gray-500 mb-2">
+                    Current: {editForm.dependencies.length > 0 ? editForm.dependencies.join(', ') : 'None'}
+                  </div>
                   <div className="space-y-1">
                     {workflowPlan.nodes
                       .filter(n => n.id !== node.id && n.type !== 'end') // Don't allow self or end as dependency
@@ -285,7 +338,8 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
                               className="rounded"
                             />
                             <span className="text-sm">
-                              #{workflowPlan.nodes.findIndex(n => n.id === potentialParent.id) + 1} {potentialParent.title}
+                              {potentialParent.type === 'start' ? '#1 Start' : 
+                               `#${workflowPlan.nodes.filter(n => n.type === 'task').findIndex(n => n.id === potentialParent.id) + 2} ${potentialParent.title}`}
                             </span>
                           </label>
                         )

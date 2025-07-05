@@ -5,8 +5,6 @@ import { TaskNode, WorkflowPlan } from '../types/workflow'
 export class WorkflowAI {
   private addLog: (log: string) => void
   private aiProvider: 'openai' | 'claude'
-  private openaiModel: string
-  private claudeModel: string
   
   constructor(
     addLog: (log: string) => void, 
@@ -16,8 +14,6 @@ export class WorkflowAI {
   ) {
     this.addLog = addLog
     this.aiProvider = aiProvider
-    this.openaiModel = openaiModel
-    this.claudeModel = claudeModel
     
     // Configure models based on provider
     if (aiProvider === 'openai') {
@@ -73,6 +69,9 @@ export class WorkflowAI {
   }
   
   private async createWorkflowFromAnalysis(analysis: any): Promise<WorkflowPlan> {
+    // Debug log to see what AI analyzed
+    console.log('AI Analysis Result:', JSON.stringify(analysis, null, 2))
+    
     const nodes: TaskNode[] = [{
       id: 'start',
       title: 'Start',
@@ -99,16 +98,18 @@ export class WorkflowAI {
           status: 'pending',
           position: { x: xOffset, y: yPos },
           duration: 5,
-          dependencies: task.dependencies || []
+          dependencies: task.dependencies || ['start']
         }
         nodes.push(node)
         
-        // Connect from start
-        edges.push({
-          id: `start-${node.id}`,
-          source: 'start',
-          target: node.id
-        })
+        // Connect based on dependencies
+        for (const dep of node.dependencies) {
+          edges.push({
+            id: `${dep}-${node.id}`,
+            source: dep,
+            target: node.id
+          })
+        }
         
         xOffset += 250
       }
@@ -192,6 +193,9 @@ export class WorkflowAI {
   
   
   private createWorkflowFromPlan(plan: any): WorkflowPlan {
+    // Debug log to see what AI generated
+    console.log('AI Plan Result:', JSON.stringify(plan, null, 2))
+    
     const nodes: TaskNode[] = [
       {
         id: 'start',
@@ -206,7 +210,6 @@ export class WorkflowAI {
     
     const edges: Array<{ id: string; source: string; target: string }> = []
     let yOffset = 250
-    let prevNodeId = 'start'
     
     for (const task of plan.tasks || []) {
       const node: TaskNode = {
@@ -217,19 +220,29 @@ export class WorkflowAI {
         status: 'pending',
         position: { x: 100, y: yOffset },
         duration: 5,
-        dependencies: [prevNodeId]
+        dependencies: task.dependencies || ['start']
       }
       nodes.push(node)
       
-      edges.push({
-        id: `${prevNodeId}-${node.id}`,
-        source: prevNodeId,
-        target: node.id
-      })
+      // Connect based on dependencies
+      for (const dep of node.dependencies) {
+        edges.push({
+          id: `${dep}-${node.id}`,
+          source: dep,
+          target: node.id
+        })
+      }
       
-      prevNodeId = node.id
       yOffset += 150
     }
+    
+    // Find tasks that don't have any other tasks depending on them (leaf tasks)
+    const leafTasks = plan.tasks.filter((task: any) => {
+      const taskId = task.id
+      return !plan.tasks.some((otherTask: any) => 
+        otherTask.dependencies && otherTask.dependencies.includes(taskId)
+      )
+    })
     
     const endNode: TaskNode = {
       id: 'end',
@@ -238,15 +251,18 @@ export class WorkflowAI {
       type: 'end',
       status: 'pending',
       position: { x: 100, y: yOffset },
-      dependencies: [prevNodeId]
+      dependencies: leafTasks.map((t: any) => t.id)
     }
     nodes.push(endNode)
     
-    edges.push({
-      id: `${prevNodeId}-end`,
-      source: prevNodeId,
-      target: 'end'
-    })
+    // Connect leaf tasks to end
+    for (const leafTask of leafTasks) {
+      edges.push({
+        id: `${leafTask.id}-end`,
+        source: leafTask.id,
+        target: 'end'
+      })
+    }
     
     return {
       id: `workflow-${Date.now()}`,

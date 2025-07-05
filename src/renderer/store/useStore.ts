@@ -10,14 +10,6 @@ interface Job {
   logs: string[]
   createdAt: Date
   workflowPlan?: WorkflowPlan
-  terminals?: Map<string, TerminalSession>
-}
-
-interface TerminalSession {
-  taskId: string
-  taskTitle: string
-  isActive: boolean
-  output: string[]
 }
 
 
@@ -69,8 +61,8 @@ interface AppState {
 }
 
 // Workflow execution function
-async function executeWorkflowTasks(jobId: string, job: any) {
-  const { workflowPlan, prd } = job
+async function executeWorkflowTasks(jobId: string, job: Job) {
+  const { workflowPlan } = job
   if (!workflowPlan) return
 
   const { updateJob, workDirectory, aiProvider, openaiModel, claudeModel } = useStore.getState()
@@ -932,7 +924,7 @@ export const useStore = create<AppState>((set, get) => {
   setIsSubmitting: (value) => set({ isSubmitting: value }),
   layoutMode: 'editing',
   setLayoutMode: (mode) => set({ layoutMode: mode }),
-  focusedPanel: null,
+  focusedPanel: 'prd',
   setFocusedPanel: (panel) => set({ focusedPanel: panel }),
   
   // Work Directory Configuration

@@ -78,92 +78,6 @@ function App() {
     }
   }, [updateJob])
 
-  // Simulation disabled - using real execution now
-  useEffect(() => {
-    console.log('Real workflow execution enabled')
-    return () => {}
-  }, [])
-  
-  // SIMULATION CODE - DISABLED FOR REAL EXECUTION
-  useEffect(() => {
-    return () => {} // Simulation disabled
-    
-    const interval = setInterval(() => {
-      const { jobs, updateJob } = useStore.getState()
-      const runningJob = jobs.find(job => job.status === 'running') // Only process running jobs, not paused
-      
-      // Skip simulation if real Claude Code execution has started (check for specific log patterns)
-      if (runningJob && runningJob.logs.some(log => log.includes('claude: command not found') || log.includes('Claude Code execution'))) {
-        console.log('Real Claude Code execution detected, stopping simulation')
-        return
-      }
-      
-      if (runningJob && runningJob.workflowPlan) {
-        const { workflowPlan } = runningJob
-        const taskNodes = workflowPlan.nodes.filter(n => n.type === 'task')
-        const completedTasks = taskNodes.filter(n => n.status === 'completed')
-        const runningTask = taskNodes.find(n => n.status === 'running')
-        const pendingTasks = taskNodes.filter(n => n.status === 'pending')
-        
-        // If no task is running but there are pending tasks, start the next one
-        if (!runningTask && pendingTasks.length > 0) {
-          const nextTask = pendingTasks[0]
-          const updatedNodes = workflowPlan.nodes.map(n =>
-            n.id === nextTask.id ? { ...n, status: 'running' as const } : n
-          )
-          
-          const newLogs = [
-            `💻 Executing: ${nextTask.title}`,
-            `🤖 Claude: Starting work on "${nextTask.title}". I'll now analyze the task requirements and determine the best approach to implement this functionality. Let me break this down into smaller steps and execute them systematically.`,
-            `📝 Reading detailed task instructions: ${nextTask.description || 'No description available'}`,
-            `💻 Running preliminary environment checks and dependency analysis...`
-          ]
-          
-          console.log('App: Adding new logs with lengths:', newLogs.map(log => log.length))
-          
-          updateJob(runningJob.id, {
-            workflowPlan: { ...workflowPlan, nodes: updatedNodes },
-            currentTask: `Executing: ${nextTask.title}`,
-            logs: [...runningJob.logs, ...newLogs]
-          })
-        }
-        
-        // If there's a running task, potentially complete it
-        if (runningTask && Math.random() > 0.7) {
-          const updatedNodes = workflowPlan.nodes.map(n =>
-            n.id === runningTask.id ? { ...n, status: 'completed' as const } : n
-          )
-          
-          const newCompletedCount = completedTasks.length + 1
-          const totalTasks = taskNodes.length
-          const progress = Math.min(Math.round((newCompletedCount / totalTasks) * 100), 100)
-          
-          const mockClaudeOutput = [
-            `🤖 Claude: Executing task "${runningTask.title}" - I'll start by analyzing the task requirements and breaking this down into smaller actionable steps. Let me first examine the current project structure and understand what needs to be implemented.`,
-            `💻 $ npm install --save-dev typescript @types/node @types/react @types/react-dom eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin prettier`,
-            `📝 Installing dependencies... This will set up TypeScript support, type definitions for React and Node.js, ESLint for code quality, and Prettier for code formatting. These tools are essential for maintaining code quality in a TypeScript React project.`,
-            `✅ Successfully installed TypeScript dependencies - All packages have been installed successfully and are now available in the project`,
-            `💻 $ npx tsc --init --target ES2020 --lib DOM,DOM.Iterable,ES6 --allowJs --skipLibCheck --esModuleInterop --allowSyntheticDefaultImports --strict --forceConsistentCasingInFileNames --moduleResolution node --resolveJsonModule --isolatedModules --noEmit --jsx react-jsx`,
-            `📝 Initializing TypeScript configuration with React-optimized settings... This configuration enables strict type checking, modern JavaScript features, and React JSX transform. The settings ensure compatibility with React and provide excellent developer experience with IntelliSense and error detection.`,
-            `🤖 Claude: Task completed successfully! I've set up a comprehensive TypeScript configuration that includes: 1) TypeScript compiler with React support, 2) ESLint for code quality analysis, 3) Prettier for consistent code formatting, 4) Type definitions for React and Node.js. Files created: tsconfig.json with optimized React settings, package.json updated with all necessary development dependencies. The project is now ready for TypeScript development with full tooling support.`,
-            `✅ Completed ${runningTask.title} - All configuration files are in place and the development environment is properly configured`
-          ]
-          
-          console.log('App: Adding completion logs with lengths:', mockClaudeOutput.map(log => log.length))
-          
-          updateJob(runningJob.id, {
-            workflowPlan: { ...workflowPlan, nodes: updatedNodes },
-            progress,
-            currentTask: newCompletedCount >= totalTasks ? 'All tasks completed!' : 'Preparing next task...',
-            logs: [...runningJob.logs, ...mockClaudeOutput],
-            status: newCompletedCount >= totalTasks ? 'completed' : 'running'
-          })
-        }
-      }
-    }, 3000)
-
-    return () => clearInterval(interval)
-  }, [])
 
   return (
     <div className="h-screen flex flex-col" style={{ backgroundColor: 'var(--color-nightshift-dark)' }}>
@@ -174,7 +88,7 @@ function App() {
           <h1 className="text-lg font-semibold">Agent Nightshift </h1>
         </div>
         
-        <div className="flex items-center gap-4 text-sm no-drag" style={{ WebkitAppRegion: 'no-drag' }}>
+        <div className="flex items-center gap-4 text-sm no-drag" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {/* AI Provider Selection */}
           <div className="flex items-center gap-2">
             <span className="text-gray-400">AI:</span>
@@ -396,7 +310,7 @@ function App() {
         <section 
           className={`layout-panel p-6 cursor-pointer transition-all duration-300 ${
             focusedPanel === 'prd' ? 'panel-maximized' :
-            layoutMode === 'editing' ? 'panel-large' :
+            layoutMode === 'editing' ? 'panel-medium-small' :
             layoutMode === 'planning' ? 'panel-medium-small' :
             'panel-small'
           }`}
@@ -420,7 +334,7 @@ function App() {
             focusedPanel === 'workflow' ? 'panel-maximized' :
             layoutMode === 'editing' ? 'panel-medium-small' :
             layoutMode === 'planning' ? 'panel-full' :
-            'panel-medium'
+            'panel-small'
           }`}
           style={{ borderRight: '1px solid var(--color-nightshift-light)' }}
           onClick={(e) => {

@@ -13,11 +13,10 @@ interface TerminalTab {
 }
 
 export const TabbedTerminal: React.FC = () => {
-  const { jobs, activeJobId, workDirectory } = useStore()
+  const { jobs, activeJobId, workDirectory, layoutMode, focusedPanel, setFocusedPanel } = useStore()
   const activeJob = jobs.find(job => job.id === activeJobId)
   const [terminals, setTerminals] = useState<TerminalTab[]>([{ id: 'main', title: '🌙 Main Terminal' }])
   const [activeTerminalId, setActiveTerminalId] = useState<string>('main')
-  const [isMaximized, setIsMaximized] = useState(false)
   
   const terminalContainerRef = useRef<HTMLDivElement>(null)
   const terminalInstances = useRef<Map<string, {
@@ -100,6 +99,51 @@ export const TabbedTerminal: React.FC = () => {
     })
   }, [activeJob?.workflowPlan, activeJob?.status])
 
+  // Handle layout changes to resize terminals
+  useEffect(() => {
+    const resizeTerminals = () => {
+      setTimeout(() => {
+        terminalInstances.current.forEach((instance, terminalId) => {
+          try {
+            instance.fitAddon.fit()
+            // Re-focus active terminal after layout change
+            if (terminalId === activeTerminalId) {
+              instance.xterm.focus()
+              console.log(`Terminal ${terminalId} re-focused after layout change`)
+            }
+          } catch (error) {
+            console.error('Error resizing terminal on layout change:', error)
+          }
+        })
+      }, 300) // Wait for CSS transition to complete
+    }
+    
+    resizeTerminals()
+  }, [layoutMode, focusedPanel, activeTerminalId])
+
+  // Use ResizeObserver for more accurate resize detection
+  useEffect(() => {
+    if (!terminalContainerRef.current) return
+
+    const resizeObserver = new ResizeObserver(() => {
+      setTimeout(() => {
+        terminalInstances.current.forEach((instance) => {
+          try {
+            instance.fitAddon.fit()
+          } catch (error) {
+            console.error('Error resizing terminal with ResizeObserver:', error)
+          }
+        })
+      }, 100)
+    })
+
+    resizeObserver.observe(terminalContainerRef.current)
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [])
+
   const initializeTerminal = async (terminalId: string) => {
     if (!terminalContainerRef.current) return
     
@@ -167,7 +211,9 @@ export const TabbedTerminal: React.FC = () => {
           try {
             fitAddon.fit()
             if (terminalId === activeTerminalId) {
+              // Ensure terminal gets focus for input
               term.focus()
+              console.log(`Terminal ${terminalId} focused and ready for input`)
             }
           } catch (error) {
             console.error('Error fitting terminal:', error)
@@ -258,6 +304,7 @@ export const TabbedTerminal: React.FC = () => {
           try {
             instance.fitAddon.fit()
             instance.xterm.focus()
+            console.log(`Switched to terminal ${terminalId} and focused for input`)
           } catch (error) {
             console.error('Error focusing terminal:', error)
           }
@@ -290,15 +337,22 @@ export const TabbedTerminal: React.FC = () => {
     }
   }
 
+  const isMaximized = focusedPanel === 'output'
+
   return (
-    <div className={`h-full flex flex-col ${isMaximized ? 'fixed inset-0 z-50' : ''}`}
-         style={isMaximized ? { backgroundColor: 'var(--color-nightshift-dark)' } : {}}>
+    <div className="h-full flex flex-col">
       
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-xl font-semibold">Terminal Output</h2>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsMaximized(!isMaximized)}
+            onClick={() => {
+              if (isMaximized) {
+                setFocusedPanel(null)
+              } else {
+                setFocusedPanel('output')
+              }
+            }}
             className="p-1 rounded transition-colors"
             style={{
               backgroundColor: 'var(--color-nightshift-darker)',
@@ -371,6 +425,14 @@ export const TabbedTerminal: React.FC = () => {
           border: '1px solid var(--color-nightshift-light)',
           minHeight: '200px',
           position: 'relative'
+        }}
+        onClick={() => {
+          // Re-focus terminal when container is clicked
+          const instance = terminalInstances.current.get(activeTerminalId)
+          if (instance) {
+            instance.xterm.focus()
+            console.log(`Terminal ${activeTerminalId} re-focused via container click`)
+          }
         }}
       />
     </div>

@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('electronAPI', {
   // Job management
   submitPRD: (prd) => ipcRenderer.invoke('submit-prd', prd),
+  registerJob: (jobData) => ipcRenderer.invoke('register-job', jobData),
   getJobStatus: (jobId) => ipcRenderer.invoke('get-job-status', jobId),
   pauseJob: (jobId) => ipcRenderer.invoke('pause-job', jobId),
   resumeJob: (jobId) => ipcRenderer.invoke('resume-job', jobId),

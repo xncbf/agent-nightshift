@@ -60,12 +60,33 @@ interface AppState {
   isAIConfigured: boolean
 }
 
+// Global execution controllers
+const executionControllers = new Map<string, { shouldStop: boolean, shouldPause: boolean }>()
+
 // Workflow execution function
 async function executeWorkflowTasks(jobId: string, job: Job) {
   const { workflowPlan } = job
   if (!workflowPlan) return
 
   const { updateJob, workDirectory, aiProvider, openaiModel, claudeModel } = useStore.getState()
+  
+  // Initialize execution controller
+  executionControllers.set(jobId, { shouldStop: false, shouldPause: false })
+  
+  // Register job with main process for pause/stop functionality
+  try {
+    await (window.electronAPI as any).registerJob({
+      id: job.id,
+      status: job.status,
+      progress: job.progress,
+      currentTask: job.currentTask,
+      logs: job.logs,
+      workflowPlan: job.workflowPlan
+    })
+    console.log('Job registered with main process:', jobId)
+  } catch (error) {
+    console.error('Failed to register job with main process:', error)
+  }
   
   // Get task nodes and sort by dependencies
   const taskNodes = workflowPlan.nodes.filter((n: any) => n.type === 'task')
@@ -85,6 +106,20 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
   const runningTasks = new Set()
 
   while (completedTasks.size - 1 < taskNodes.length) { // -1 for start node
+    // Check execution controller first
+    const controller = executionControllers.get(jobId)
+    if (controller?.shouldStop || controller?.shouldPause) {
+      console.log(`Workflow execution ${controller.shouldPause ? 'paused' : 'stopped'} via controller for job ${jobId}`)
+      break
+    }
+    
+    // Check job status - pause/stop execution if needed
+    const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
+    if (!currentJob || currentJob.status === 'paused' || currentJob.status === 'ready') {
+      console.log(`Workflow execution ${currentJob?.status === 'paused' ? 'paused' : 'stopped'} for job ${jobId}`)
+      break
+    }
+    
     // Find tasks that can run (all dependencies completed)
     const readyTasks = taskNodes.filter((task: any) => {
       const isReady = task.status === 'pending' && 
@@ -109,8 +144,22 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
     if (readyTasks.length === 0) {
       // Check if we have running tasks
       if (runningTasks.size > 0) {
-        // Wait for running tasks to complete
+        // Wait for running tasks to complete, but check job status while waiting
         await new Promise(resolve => setTimeout(resolve, 1000))
+        
+        // Check controller after waiting
+        const controllerAfterWait = executionControllers.get(jobId)
+        if (controllerAfterWait?.shouldStop || controllerAfterWait?.shouldPause) {
+          console.log(`Workflow execution ${controllerAfterWait.shouldPause ? 'paused' : 'stopped'} via controller while waiting`)
+          break
+        }
+        
+        // Check job status again after waiting
+        const jobAfterWait = useStore.getState().jobs.find(j => j.id === jobId)
+        if (!jobAfterWait || jobAfterWait.status === 'paused' || jobAfterWait.status === 'ready') {
+          console.log(`Workflow execution ${jobAfterWait?.status === 'paused' ? 'paused' : 'stopped'} while waiting for running tasks`)
+          break
+        }
         continue
       } else {
         // No ready tasks and no running tasks - workflow stuck
@@ -176,16 +225,31 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
   // Check if all tasks completed successfully
   const finalJob = useStore.getState().jobs.find(j => j.id === jobId)
   if (finalJob?.workflowPlan) {
-    const allTasksCompleted = taskNodes.every((task: any) => 
-      finalJob.workflowPlan!.nodes.find((n: any) => n.id === task.id)?.status === 'completed'
-    )
+    const controller = executionControllers.get(jobId)
     
-    updateJob(jobId, {
-      status: allTasksCompleted ? 'completed' : 'failed',
-      currentTask: allTasksCompleted ? 'All tasks completed!' : 'Some tasks failed',
-      progress: 100
-    })
+    // Don't mark as failed if manually paused/stopped
+    if (controller?.shouldPause) {
+      console.log('Execution paused - maintaining paused status')
+      // Status already set to paused, don't change it
+    } else if (controller?.shouldStop) {
+      console.log('Execution stopped - status already set to ready')
+      // Status already set to ready, don't change it
+    } else {
+      // Normal completion check
+      const allTasksCompleted = taskNodes.every((task: any) => 
+        finalJob.workflowPlan!.nodes.find((n: any) => n.id === task.id)?.status === 'completed'
+      )
+      
+      updateJob(jobId, {
+        status: allTasksCompleted ? 'completed' : 'failed',
+        currentTask: allTasksCompleted ? 'All tasks completed!' : 'Some tasks failed',
+        progress: 100
+      })
+    }
   }
+  
+  // Cleanup execution controller
+  executionControllers.delete(jobId)
 }
 
 // Execute individual task
@@ -240,6 +304,8 @@ Please complete this task step by step. You have access to all MCP tools for fil
 // Initialize terminal with Claude Code CLI in interactive mode
 async function initializeClaudeTerminal(terminalId: string, workDirectory: string) {
   try {
+    console.log(`🔄 Creating terminal ${terminalId} in directory: ${workDirectory}`)
+    
     // Create terminal for this task
     const terminalResult = await window.electronAPI.createTerminal(workDirectory, terminalId)
     if (!terminalResult.success) {
@@ -249,15 +315,23 @@ async function initializeClaudeTerminal(terminalId: string, workDirectory: strin
     // Set up terminal output monitoring
     let terminalOutput = ''
     let isClaudeReady = false
+    let isTerminalReady = false
     
     const outputHandler = (_event: any, data: { terminalId: string; data: string }) => {
       if (data.terminalId === terminalId) {
         terminalOutput += data.data
+        console.log(`Terminal ${terminalId} output:`, data.data.replace(/\r?\n/g, '\\n'))
+        
+        // Check for terminal readiness (prompt appeared)
+        if (terminalOutput.includes('$') || terminalOutput.includes('%') || terminalOutput.includes('>')) {
+          isTerminalReady = true
+        }
         
         // Check for Claude startup indicators
         if (terminalOutput.includes('Welcome to Claude Code!') || 
             terminalOutput.includes('claude>') ||
-            terminalOutput.includes('cwd:')) {
+            terminalOutput.includes('cwd:') ||
+            terminalOutput.includes('I can help you')) {
           isClaudeReady = true
         }
       }
@@ -265,31 +339,51 @@ async function initializeClaudeTerminal(terminalId: string, workDirectory: strin
     
     const unsubscribe = (window.electronAPI as any).onTerminalData(outputHandler)
 
-    // Change to working directory
+    // Wait for terminal to be ready before sending commands
+    console.log(`⏳ Waiting for terminal ${terminalId} to be ready...`)
+    const terminalStartTime = Date.now()
+    const terminalTimeout = 5000 // 5 seconds for terminal to be ready
+    
+    while (!isTerminalReady && (Date.now() - terminalStartTime) < terminalTimeout) {
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    
+    if (!isTerminalReady) {
+      console.warn(`Terminal ${terminalId} not ready after ${terminalTimeout/1000}s, proceeding anyway. Output: ${terminalOutput}`)
+    } else {
+      console.log(`✅ Terminal ${terminalId} is ready`)
+    }
+
+    // Change to working directory with longer wait
+    console.log(`📂 Changing to directory: ${workDirectory}`)
     await (window.electronAPI as any).sendTerminalInput(`cd "${workDirectory}"\n`, terminalId)
-    await new Promise(resolve => setTimeout(resolve, 500))
+    await new Promise(resolve => setTimeout(resolve, 1000)) // Increased wait time
     
     // Check if Claude is already running by looking at current output
     if (terminalOutput.includes('Welcome to Claude Code!') || terminalOutput.includes('cwd:')) {
-      console.log(`Claude Code already running in terminal ${terminalId}`)
+      console.log(`✅ Claude Code already running in terminal ${terminalId}`)
       isClaudeReady = true
     } else {
       // Start Claude Code CLI in interactive mode
+      console.log(`🚀 Starting Claude Code CLI in terminal ${terminalId}`)
       await (window.electronAPI as any).sendTerminalInput('claude\n', terminalId)
     }
     
     // Wait for Claude to be ready (with timeout)
+    console.log(`⏳ Waiting for Claude Code to be ready in terminal ${terminalId}...`)
     const startTime = Date.now()
-    const timeout = 10000 // 10 seconds timeout
+    const timeout = 15000 // Increased to 15 seconds timeout
     
     while (!isClaudeReady && (Date.now() - startTime) < timeout) {
-      await new Promise(resolve => setTimeout(resolve, 200))
+      await new Promise(resolve => setTimeout(resolve, 300)) // Slightly longer polling interval
     }
     
     // Clean up listener
     unsubscribe()
     
     if (!isClaudeReady) {
+      console.error(`❌ Claude Code CLI did not start within ${timeout/1000} seconds`)
+      console.error(`Terminal output: ${terminalOutput}`)
       throw new Error(`Claude Code CLI did not start within ${timeout/1000} seconds. Output: ${terminalOutput}`)
     }
     
@@ -405,15 +499,38 @@ export const useStore = create<AppState>((set, get) => {
   
   let savedJobs = []
   try {
-    savedJobs = JSON.parse(localStorage.getItem('jobs') || '[]').map((job: any) => ({
-      ...job,
-      createdAt: new Date(job.createdAt),
-      // Ensure required properties exist
-      logs: job.logs || [],
-      status: job.status || 'pending',
-      progress: job.progress || 0,
-      currentTask: job.currentTask || ''
-    }))
+    savedJobs = JSON.parse(localStorage.getItem('jobs') || '[]').map((job: any) => {
+      // Reset running/paused/failed jobs to ready state on app restart
+      let status = job.status || 'pending'
+      if (status === 'running' || status === 'paused' || status === 'failed') {
+        status = 'ready'
+      }
+      
+      // Reset workflow node statuses if job was running, paused, or failed
+      let workflowPlan = job.workflowPlan
+      if (workflowPlan && (job.status === 'running' || job.status === 'paused' || job.status === 'failed')) {
+        workflowPlan = {
+          ...workflowPlan,
+          nodes: workflowPlan.nodes.map((node: any) => ({
+            ...node,
+            status: node.type === 'start' ? 'completed' : 
+                   (node.status === 'running' || node.status === 'failed') ? 'pending' : 
+                   node.status
+          }))
+        }
+      }
+      
+      return {
+        ...job,
+        createdAt: new Date(job.createdAt),
+        workflowPlan,
+        // Ensure required properties exist
+        logs: job.logs || [],
+        status,
+        progress: job.progress || 0,
+        currentTask: status === 'ready' ? 'Ready to resume' : (job.currentTask || '')
+      }
+    })
   } catch (error) {
     console.warn('Failed to load saved jobs from localStorage:', error)
     savedJobs = []
@@ -422,7 +539,7 @@ export const useStore = create<AppState>((set, get) => {
   const savedActiveJobId = localStorage.getItem('active_job_id') || null
   
   // Validate active job ID exists in saved jobs
-  const validActiveJobId = savedJobs.find(job => job.id === savedActiveJobId) ? savedActiveJobId : null
+  const validActiveJobId = savedJobs.find((job: Job) => job.id === savedActiveJobId) ? savedActiveJobId : null
   
   return {
   // PRD Editor
@@ -659,13 +776,27 @@ export const useStore = create<AppState>((set, get) => {
   },
 
   pauseJob: async (jobId) => {
+    console.log('pauseJob called with jobId:', jobId)
     const { jobs } = get()
     const job = jobs.find(j => j.id === jobId)
+    console.log('Found job:', job)
     if (job && job.status === 'running') {
+      console.log('Job is running, attempting to pause...')
       try {
         if ((window.electronAPI as any).pauseJob) {
+          console.log('Calling electronAPI.pauseJob...')
           const result = await (window.electronAPI as any).pauseJob(jobId)
+          console.log('pauseJob result:', result)
           if (result.success) {
+            console.log('pauseJob succeeded, updating state...')
+            
+            // Set execution controller to pause
+            const controller = executionControllers.get(jobId)
+            if (controller) {
+              controller.shouldPause = true
+              console.log('Execution controller set to pause')
+            }
+            
             set(state => ({
               jobs: state.jobs.map(j => 
                 j.id === jobId 
@@ -678,6 +809,9 @@ export const useStore = create<AppState>((set, get) => {
                   : j
               )
             }))
+            console.log('State updated successfully')
+          } else {
+            console.error('pauseJob failed:', result.error)
           }
         } else {
           // Fallback - just update the status
@@ -743,13 +877,27 @@ export const useStore = create<AppState>((set, get) => {
   },
 
   stopJob: async (jobId) => {
+    console.log('stopJob called with jobId:', jobId)
     const { jobs } = get()
     const job = jobs.find(j => j.id === jobId)
+    console.log('Found job for stop:', job)
     if (job && (job.status === 'running' || job.status === 'paused')) {
+      console.log('Job can be stopped, attempting...')
       try {
         if ((window.electronAPI as any).stopJob) {
+          console.log('Calling electronAPI.stopJob...')
           const result = await (window.electronAPI as any).stopJob(jobId)
+          console.log('stopJob result:', result)
           if (result.success) {
+            console.log('stopJob succeeded, updating state...')
+            
+            // Set execution controller to stop
+            const controller = executionControllers.get(jobId)
+            if (controller) {
+              controller.shouldStop = true
+              console.log('Execution controller set to stop')
+            }
+            
             set(state => {
               const updatedJobs = state.jobs.map(j => {
                 if (j.id === jobId) {

@@ -160,25 +160,94 @@ ipcMain.handle('get-job-status', async (event, jobId) => {
   }
 })
 
+// Job registration handler
+ipcMain.handle('register-job', async (event, jobData) => {
+  console.log('Main: Registering job:', jobData.id)
+  activeJobs.set(jobData.id, jobData)
+  return { success: true }
+})
+
 // New handlers for job control
 ipcMain.handle('pause-job', async (event, jobId) => {
-  return aiManager.pauseJob(jobId)
+  const job = activeJobs.get(jobId)
+  if (!job) {
+    console.log('Main: Job not found in activeJobs:', jobId)
+    console.log('Main: Available jobs:', Array.from(activeJobs.keys()))
+    return { success: false, error: 'Job not found' }
+  }
+  
+  // For now, just update job status since we're using direct API calls
+  job.status = 'paused'
+  job.currentTask = 'Paused by user'
+  job.logs.push('⏸️ Execution paused')
+  
+  mainWindow?.webContents.send('job-update', { 
+    jobId, 
+    updates: {
+      status: job.status,
+      currentTask: job.currentTask
+    }
+  })
+  mainWindow?.webContents.send('job-log-update', { jobId, logs: job.logs })
+  
+  return { success: true }
 })
 
 ipcMain.handle('resume-job', async (event, jobId) => {
-  return aiManager.resumeJob(jobId)
+  const job = activeJobs.get(jobId)
+  if (!job) {
+    return { success: false, error: 'Job not found' }
+  }
+  
+  // For now, just update job status since we're using direct API calls
+  job.status = 'running'
+  job.currentTask = 'Resuming execution...'
+  job.logs.push('▶️ Execution resumed')
+  
+  mainWindow?.webContents.send('job-update', { 
+    jobId, 
+    updates: {
+      status: job.status,
+      currentTask: job.currentTask
+    }
+  })
+  mainWindow?.webContents.send('job-log-update', { jobId, logs: job.logs })
+  
+  return { success: true }
 })
 
 ipcMain.handle('stop-job', async (event, jobId) => {
-  const result = aiManager.stopJob(jobId)
-  if (result.success) {
-    const job = activeJobs.get(jobId)
-    if (job) {
-      job.status = 'failed'
-      job.currentTask = 'Stopped by user'
-    }
+  const job = activeJobs.get(jobId)
+  if (!job) {
+    return { success: false, error: 'Job not found' }
   }
-  return result
+  
+  // Update job status
+  job.status = 'ready'
+  job.progress = 0
+  job.currentTask = 'Workflow ready for execution'
+  job.logs.push('⏹️ Execution stopped - Ready to restart')
+  
+  // Reset workflow nodes to pending state
+  if (job.workflowPlan) {
+    job.workflowPlan.nodes = job.workflowPlan.nodes.map(node => ({
+      ...node,
+      status: node.type === 'start' ? 'completed' : 'pending'
+    }))
+  }
+  
+  mainWindow?.webContents.send('job-update', { 
+    jobId, 
+    updates: {
+      status: job.status,
+      progress: job.progress,
+      currentTask: job.currentTask,
+      workflowPlan: job.workflowPlan
+    }
+  })
+  mainWindow?.webContents.send('job-log-update', { jobId, logs: job.logs })
+  
+  return { success: true }
 })
 
 // AI Provider management handlers

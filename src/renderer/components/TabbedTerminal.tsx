@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Terminal as XTerm } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { WebLinksAddon } from 'xterm-addon-web-links'
@@ -17,8 +18,10 @@ export const TabbedTerminal: React.FC = () => {
   const activeJob = jobs.find(job => job.id === activeJobId)
   const [terminals, setTerminals] = useState<TerminalTab[]>([{ id: 'main', title: '🌙 Main Terminal' }])
   const [activeTerminalId, setActiveTerminalId] = useState<string>('main')
+  const [isFullscreen, setIsFullscreen] = useState(false)
   
   const terminalContainerRef = useRef<HTMLDivElement>(null)
+  const fullscreenContainerRef = useRef<HTMLDivElement>(null)
   const terminalInstances = useRef<Map<string, {
     element: HTMLDivElement
     xterm: XTerm
@@ -144,8 +147,37 @@ export const TabbedTerminal: React.FC = () => {
     }
   }, [])
 
+  // Handle fullscreen mode
+  useEffect(() => {
+    if (isFullscreen) {
+      // Resize terminals when entering fullscreen
+      setTimeout(() => {
+        terminalInstances.current.forEach((instance, terminalId) => {
+          try {
+            instance.fitAddon.fit()
+            const { cols, rows } = instance.xterm
+            window.electronAPI.resizeTerminal(cols, rows, terminalId)
+          } catch (error) {
+            console.error('Error resizing terminal for fullscreen:', error)
+          }
+        })
+      }, 100)
+
+      // ESC key to exit fullscreen
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setIsFullscreen(false)
+        }
+      }
+      
+      document.addEventListener('keydown', handleKeyDown)
+      return () => document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isFullscreen])
+
   const initializeTerminal = async (terminalId: string) => {
-    if (!terminalContainerRef.current) return
+    const currentContainer = isFullscreen ? fullscreenContainerRef.current : terminalContainerRef.current
+    if (!currentContainer) return
     
     // Skip if terminal already exists
     if (terminalInstances.current.has(terminalId)) {
@@ -202,7 +234,7 @@ export const TabbedTerminal: React.FC = () => {
 
     // Open terminal
     try {
-      terminalContainerRef.current.appendChild(terminalElement)
+      currentContainer.appendChild(terminalElement)
       term.open(terminalElement)
       
       // Fit after a small delay to ensure dimensions are available
@@ -337,7 +369,106 @@ export const TabbedTerminal: React.FC = () => {
     }
   }
 
-  const isMaximized = focusedPanel === 'output'
+
+  // Create fullscreen terminal component
+  const fullscreenTerminal = isFullscreen ? createPortal(
+    <div className="fixed inset-0 z-[9999] flex flex-col" style={{ backgroundColor: 'var(--color-nightshift-dark)' }}>
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xl font-semibold">Terminal Output - Fullscreen</h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsFullscreen(false)}
+              className="p-2 rounded transition-colors hover:bg-opacity-80"
+              style={{
+                backgroundColor: 'var(--color-nightshift-accent)',
+                color: 'white'
+              }}
+              title="Exit Fullscreen (ESC)"
+            >
+              <Minimize2 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => {
+                const instance = terminalInstances.current.get(activeTerminalId)
+                if (instance) {
+                  instance.xterm.clear()
+                }
+              }}
+              className="px-3 py-1 rounded-md text-sm"
+              style={{
+                backgroundColor: 'var(--color-nightshift-darker)',
+                color: '#9ca3af'
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+        
+        {/* Terminal Tabs */}
+        <div className="flex items-center gap-1 mb-2 overflow-x-auto">
+          {terminals.map((tab) => (
+            <div
+              key={tab.id}
+              className={`flex items-center gap-2 px-3 py-1 rounded-t-md cursor-pointer transition-colors ${
+                activeTerminalId === tab.id ? 'bg-opacity-100' : 'bg-opacity-50 hover:bg-opacity-75'
+              }`}
+              style={{
+                backgroundColor: activeTerminalId === tab.id 
+                  ? 'var(--color-nightshift-light)' 
+                  : 'var(--color-nightshift-darker)',
+                borderBottom: activeTerminalId === tab.id ? '2px solid var(--color-nightshift-accent)' : 'none'
+              }}
+              onClick={() => switchToTerminal(tab.id)}
+            >
+              <Terminal className="w-3 h-3" />
+              <span className="text-sm whitespace-nowrap">
+                {tab.title}
+                {tab.isParallel && <span className="ml-1 text-xs text-yellow-400">⚡</span>}
+              </span>
+              {tab.id !== 'main' && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    removeTerminal(tab.id)
+                  }}
+                  className="ml-1 p-0.5 rounded hover:bg-red-500 hover:bg-opacity-20"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Terminal Container - Full Screen */}
+      <div 
+        className="flex-1 px-4 pb-4"
+        style={{
+          backgroundColor: 'var(--color-nightshift-dark)'
+        }}
+      >
+        <div 
+          ref={fullscreenContainerRef}
+          className="h-full rounded-lg overflow-hidden"
+          style={{
+            backgroundColor: '#0a0a0f',
+            border: '1px solid var(--color-nightshift-light)',
+            position: 'relative'
+          }}
+          onClick={() => {
+            const instance = terminalInstances.current.get(activeTerminalId)
+            if (instance) {
+              instance.xterm.focus()
+            }
+          }}
+        />
+      </div>
+    </div>,
+    document.body
+  ) : null
 
   return (
     <div className="h-full flex flex-col">
@@ -347,20 +478,17 @@ export const TabbedTerminal: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
-              if (isMaximized) {
-                setFocusedPanel(null)
-              } else {
-                setFocusedPanel('output')
-              }
+              console.log('Setting fullscreen to true')
+              setIsFullscreen(true)
             }}
-            className="p-1 rounded transition-colors"
+            className="p-1 rounded transition-colors hover:bg-opacity-80"
             style={{
               backgroundColor: 'var(--color-nightshift-darker)',
               color: '#9ca3af'
             }}
-            title={isMaximized ? 'Minimize' : 'Maximize'}
+            title="Fullscreen"
           >
-            {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            <Maximize2 className="w-4 h-4" />
           </button>
           <button
             onClick={() => {
@@ -435,6 +563,9 @@ export const TabbedTerminal: React.FC = () => {
           }
         }}
       />
+      
+      {/* Render fullscreen terminal via portal */}
+      {fullscreenTerminal}
     </div>
   )
 }

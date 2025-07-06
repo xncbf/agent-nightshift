@@ -75,7 +75,10 @@ export const ProgressView: React.FC = () => {
           <div className="flex items-center gap-2">
             {activeJob.status === 'running' && (
               <button
-                onClick={() => pauseJob(activeJob.id)}
+                onClick={() => {
+                  console.log('Pause button clicked for job:', activeJob.id)
+                  pauseJob(activeJob.id)
+                }}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors"
                 style={{ backgroundColor: 'var(--color-nightshift-warning)', color: 'white' }}
                 title="Pause execution"
@@ -87,7 +90,10 @@ export const ProgressView: React.FC = () => {
             
             {activeJob.status === 'paused' && (
               <button
-                onClick={() => resumeJob(activeJob.id)}
+                onClick={() => {
+                  console.log('Resume button clicked for job:', activeJob.id)
+                  resumeJob(activeJob.id)
+                }}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors"
                 style={{ backgroundColor: 'var(--color-nightshift-success)', color: 'white' }}
                 title="Resume execution"
@@ -99,7 +105,10 @@ export const ProgressView: React.FC = () => {
             
             {(activeJob.status === 'running' || activeJob.status === 'paused') && (
               <button
-                onClick={() => stopJob(activeJob.id)}
+                onClick={() => {
+                  console.log('Stop button clicked for job:', activeJob.id)
+                  stopJob(activeJob.id)
+                }}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors"
                 style={{ backgroundColor: 'var(--color-nightshift-error)', color: 'white' }}
                 title="Stop execution"

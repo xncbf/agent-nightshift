@@ -166,17 +166,34 @@ export const TabbedTerminal: React.FC = () => {
   // Handle fullscreen mode
   useEffect(() => {
     if (isFullscreen) {
-      // Resize terminals when entering fullscreen
+      // Move existing terminals to fullscreen container
       setTimeout(() => {
-        terminalInstances.current.forEach((instance, terminalId) => {
-          try {
-            instance.fitAddon.fit()
-            const { cols, rows } = instance.xterm
-            window.electronAPI.resizeTerminal(cols, rows, terminalId)
-          } catch (error) {
-            console.error('Error resizing terminal for fullscreen:', error)
-          }
-        })
+        const fullscreenContainer = fullscreenContainerRef.current
+        if (fullscreenContainer) {
+          terminalInstances.current.forEach((instance, terminalId) => {
+            try {
+              // Move terminal element to fullscreen container
+              if (instance.element.parentNode !== fullscreenContainer) {
+                fullscreenContainer.appendChild(instance.element)
+              }
+              
+              // Show only active terminal
+              instance.element.style.display = terminalId === activeTerminalId ? 'block' : 'none'
+              
+              // Resize for fullscreen
+              instance.fitAddon.fit()
+              const { cols, rows } = instance.xterm
+              window.electronAPI.resizeTerminal(cols, rows, terminalId)
+              
+              // Focus active terminal
+              if (terminalId === activeTerminalId) {
+                instance.xterm.focus()
+              }
+            } catch (error) {
+              console.error('Error moving terminal to fullscreen:', error)
+            }
+          })
+        }
       }, 100)
 
       // ESC key to exit fullscreen
@@ -188,8 +205,38 @@ export const TabbedTerminal: React.FC = () => {
       
       document.addEventListener('keydown', handleKeyDown)
       return () => document.removeEventListener('keydown', handleKeyDown)
+    } else {
+      // Move terminals back to normal container when exiting fullscreen
+      setTimeout(() => {
+        const normalContainer = terminalContainerRef.current
+        if (normalContainer) {
+          terminalInstances.current.forEach((instance, terminalId) => {
+            try {
+              // Move terminal element back to normal container
+              if (instance.element.parentNode !== normalContainer) {
+                normalContainer.appendChild(instance.element)
+              }
+              
+              // Show only active terminal
+              instance.element.style.display = terminalId === activeTerminalId ? 'block' : 'none'
+              
+              // Resize for normal mode
+              instance.fitAddon.fit()
+              const { cols, rows } = instance.xterm
+              window.electronAPI.resizeTerminal(cols, rows, terminalId)
+              
+              // Focus active terminal
+              if (terminalId === activeTerminalId) {
+                instance.xterm.focus()
+              }
+            } catch (error) {
+              console.error('Error moving terminal back from fullscreen:', error)
+            }
+          })
+        }
+      }, 100)
     }
-  }, [isFullscreen])
+  }, [isFullscreen, activeTerminalId])
 
   const initializeTerminal = async (terminalId: string) => {
     const currentContainer = isFullscreen ? fullscreenContainerRef.current : terminalContainerRef.current

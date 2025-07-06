@@ -315,10 +315,9 @@ function App() {
             'panel-small'
           }`}
           style={{ borderRight: '1px solid var(--color-nightshift-light)' }}
-          onClick={(e) => {
-            // Focus when clicking on the panel, but not on buttons
-            const target = e.target as HTMLElement
-            if (!target.closest('button, a, [role="button"]')) {
+          onClick={() => {
+            // Always focus when clicking anywhere in the panel
+            if (focusedPanel !== 'prd') {
               setFocusedPanel('prd')
             }
           }}
@@ -337,10 +336,9 @@ function App() {
             'panel-small'
           }`}
           style={{ borderRight: '1px solid var(--color-nightshift-light)' }}
-          onClick={(e) => {
-            // Focus when clicking on the panel, but not on buttons
-            const target = e.target as HTMLElement
-            if (!target.closest('button, a, [role="button"]')) {
+          onClick={() => {
+            // Always focus when clicking anywhere in the panel
+            if (focusedPanel !== 'workflow') {
               setFocusedPanel('workflow')
             }
           }}
@@ -358,10 +356,9 @@ function App() {
             layoutMode === 'planning' ? 'panel-medium-small' :
             'panel-medium'
           }`}
-          onClick={(e) => {
-            // Focus when clicking on the panel, but not on buttons
-            const target = e.target as HTMLElement
-            if (!target.closest('button, a, [role="button"]')) {
+          onClick={() => {
+            // Always focus when clicking anywhere in the panel
+            if (focusedPanel !== 'output') {
               setFocusedPanel('output')
             }
           }}

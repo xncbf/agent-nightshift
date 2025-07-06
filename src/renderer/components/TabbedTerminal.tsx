@@ -97,7 +97,14 @@ export const TabbedTerminal: React.FC = () => {
     // Initialize new terminals that don't exist yet
     newTerminals.forEach(terminal => {
       if (!terminalInstances.current.has(terminal.id)) {
-        setTimeout(() => initializeTerminal(terminal.id), 100)
+        setTimeout(async () => {
+          await initializeTerminal(terminal.id)
+          // Auto-switch to the new terminal if it's a task terminal
+          if (terminal.isParallel && terminal.id !== 'main') {
+            console.log(`Auto-switching to new task terminal: ${terminal.id}`)
+            await switchToTerminal(terminal.id)
+          }
+        }, 100)
       }
     })
   }, [activeJob?.workflowPlan, activeJob?.status])
@@ -242,11 +249,9 @@ export const TabbedTerminal: React.FC = () => {
         if (fitAddon && terminalElement) {
           try {
             fitAddon.fit()
-            if (terminalId === activeTerminalId) {
-              // Ensure terminal gets focus for input
-              term.focus()
-              console.log(`Terminal ${terminalId} focused and ready for input`)
-            }
+            // Always focus newly created terminals
+            term.focus()
+            console.log(`Terminal ${terminalId} fitted and focused for input`)
           } catch (error) {
             console.error('Error fitting terminal:', error)
           }
@@ -269,6 +274,12 @@ export const TabbedTerminal: React.FC = () => {
       const result = await window.electronAPI.createTerminal(workDirectory, terminalId)
       if (!result.success) {
         term.writeln(`❌ Failed to create terminal: ${result.error}`)
+      } else {
+        // Focus terminal after successful backend creation
+        setTimeout(() => {
+          term.focus()
+          console.log(`Terminal ${terminalId} re-focused after backend creation`)
+        }, 200)
       }
     } catch (error) {
       term.writeln(`❌ Terminal creation error: ${error}`)
@@ -558,8 +569,11 @@ export const TabbedTerminal: React.FC = () => {
           // Re-focus terminal when container is clicked
           const instance = terminalInstances.current.get(activeTerminalId)
           if (instance) {
-            instance.xterm.focus()
-            console.log(`Terminal ${activeTerminalId} re-focused via container click`)
+            // Force focus with a small delay
+            setTimeout(() => {
+              instance.xterm.focus()
+              console.log(`Terminal ${activeTerminalId} re-focused via container click`)
+            }, 10)
           }
         }}
       />

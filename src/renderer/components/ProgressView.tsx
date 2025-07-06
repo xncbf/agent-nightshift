@@ -224,15 +224,17 @@ export const ProgressView: React.FC = () => {
                       {/* Terminal View Button */}
                       <button
                         onClick={() => {
-                          // Switch to terminal tab for this task
-                          const terminalEvent = new CustomEvent('switchTerminal', { 
-                            detail: { terminalId: node.id } 
-                          })
-                          window.dispatchEvent(terminalEvent)
-                          
-                          // Switch to output panel
+                          // Switch to output panel first
                           const { setFocusedPanel } = useStore.getState()
                           setFocusedPanel('output')
+                          
+                          // Switch to terminal tab for this task with small delay
+                          setTimeout(() => {
+                            const terminalEvent = new CustomEvent('switchTerminal', { 
+                              detail: { terminalId: node.id } 
+                            })
+                            window.dispatchEvent(terminalEvent)
+                          }, 100)
                         }}
                         className="p-1 rounded hover:bg-opacity-20 transition-colors"
                         style={{

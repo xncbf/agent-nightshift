@@ -189,6 +189,16 @@ export const TabbedTerminal: React.FC = () => {
     // Skip if terminal already exists
     if (terminalInstances.current.has(terminalId)) {
       console.log(`Terminal ${terminalId} already exists, skipping initialization`)
+      // Focus existing terminal if it's the active one
+      if (terminalId === activeTerminalId) {
+        const instance = terminalInstances.current.get(terminalId)
+        if (instance) {
+          setTimeout(() => {
+            instance.xterm.focus()
+            console.log(`Focused existing terminal ${terminalId}`)
+          }, 50)
+        }
+      }
       return
     }
 
@@ -230,7 +240,13 @@ export const TabbedTerminal: React.FC = () => {
       lineHeight: 1.2,
       cursorBlink: true,
       convertEol: true,
-      allowProposedApi: true
+      allowProposedApi: true,
+      scrollback: 1000,
+      tabStopWidth: 8,
+      fastScrollModifier: 'alt',
+      fastScrollSensitivity: 5,
+      windowsMode: false,
+      macOptionIsMeta: true
     })
 
     const fitAddon = new FitAddon()
@@ -249,9 +265,14 @@ export const TabbedTerminal: React.FC = () => {
         if (fitAddon && terminalElement) {
           try {
             fitAddon.fit()
+            
+            // Sync terminal size with PTY
+            const { cols, rows } = term
+            window.electronAPI.resizeTerminal(cols, rows, terminalId)
+            
             // Always focus newly created terminals
             term.focus()
-            console.log(`Terminal ${terminalId} fitted and focused for input`)
+            console.log(`Terminal ${terminalId} fitted (${cols}x${rows}) and focused for input`)
           } catch (error) {
             console.error('Error fitting terminal:', error)
           }
@@ -285,7 +306,7 @@ export const TabbedTerminal: React.FC = () => {
       term.writeln(`❌ Terminal creation error: ${error}`)
     }
 
-    // Handle terminal data
+    // Handle terminal data - keep it simple
     const handleData = (_event: any, data: { terminalId: string; data: string }) => {
       if (data.terminalId === terminalId) {
         term.write(data.data)

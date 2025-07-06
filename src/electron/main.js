@@ -413,11 +413,15 @@ ipcMain.handle('create-terminal', async (event, workDirectory, terminalId = 'mai
     // Create new pseudo-terminal
     const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash'
     const ptyProcess = pty.spawn(shell, [], {
-      name: 'xterm-color',
+      name: 'xterm-256color',
       cols: 80,
       rows: 30,
       cwd: workDirectory || process.cwd(),
-      env: process.env
+      env: {
+        ...process.env,
+        TERM: 'xterm-256color',
+        COLORTERM: 'truecolor'
+      }
     })
 
     // Store process

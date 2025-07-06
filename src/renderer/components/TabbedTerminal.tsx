@@ -116,10 +116,15 @@ export const TabbedTerminal: React.FC = () => {
         terminalInstances.current.forEach((instance, terminalId) => {
           try {
             instance.fitAddon.fit()
+            
+            // Sync terminal size with PTY after resize
+            const { cols, rows } = instance.xterm
+            window.electronAPI.resizeTerminal(cols, rows, terminalId)
+            
             // Re-focus active terminal after layout change
             if (terminalId === activeTerminalId) {
               instance.xterm.focus()
-              console.log(`Terminal ${terminalId} re-focused after layout change`)
+              console.log(`Terminal ${terminalId} resized (${cols}x${rows}) and re-focused after layout change`)
             }
           } catch (error) {
             console.error('Error resizing terminal on layout change:', error)
@@ -137,9 +142,13 @@ export const TabbedTerminal: React.FC = () => {
 
     const resizeObserver = new ResizeObserver(() => {
       setTimeout(() => {
-        terminalInstances.current.forEach((instance) => {
+        terminalInstances.current.forEach((instance, terminalId) => {
           try {
             instance.fitAddon.fit()
+            
+            // Sync terminal size with PTY
+            const { cols, rows } = instance.xterm
+            window.electronAPI.resizeTerminal(cols, rows, terminalId)
           } catch (error) {
             console.error('Error resizing terminal with ResizeObserver:', error)
           }
@@ -367,8 +376,13 @@ export const TabbedTerminal: React.FC = () => {
         setTimeout(() => {
           try {
             instance.fitAddon.fit()
+            
+            // Sync terminal size with PTY when switching
+            const { cols, rows } = instance.xterm
+            window.electronAPI.resizeTerminal(cols, rows, terminalId)
+            
             instance.xterm.focus()
-            console.log(`Switched to terminal ${terminalId} and focused for input`)
+            console.log(`Switched to terminal ${terminalId} (${cols}x${rows}) and focused for input`)
           } catch (error) {
             console.error('Error focusing terminal:', error)
           }

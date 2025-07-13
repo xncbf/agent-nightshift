@@ -118,10 +118,15 @@ function updateTaskStatus(jobId: string, taskId: string, status: string, additio
 
 // Workflow execution function
 async function executeWorkflowTasks(jobId: string, job: Job) {
+  console.log(`🎯 executeWorkflowTasks called for job ${jobId}`)
   const { workflowPlan } = job
-  if (!workflowPlan) return
+  if (!workflowPlan) {
+    console.error(`❌ No workflow plan found for job ${jobId}`)
+    return
+  }
 
   const { updateJob, workDirectory, aiProvider, openaiModel, claudeModel } = useStore.getState()
+  console.log(`📂 Using work directory: ${workDirectory}`)
   
   // Initialize execution controller
   executionControllers.set(jobId, { shouldStop: false, shouldPause: false })
@@ -185,6 +190,8 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
     }
     
     const currentTaskNodes = currentJobState.workflowPlan.nodes.filter((n: any) => n.type === 'task')
+    console.log(`🔍 Checking ready tasks. CompletedTasks: [${Array.from(completedTasks).join(', ')}], RunningTasks: [${Array.from(runningTasks).join(', ')}]`)
+    
     const readyTasks = currentTaskNodes.filter((task: any) => {
       const isReady = task.status === 'pending' && 
         task.dependencies.every((dep: string) => completedTasks.has(dep)) &&
@@ -240,10 +247,13 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
     readyTasks.forEach((task, index) => {
       const delay = index * 1000 // 1 second delay between starts
       
+      // Add to running tasks IMMEDIATELY to prevent duplicate scheduling
+      runningTasks.add(task.id)
+      console.log(`📝 Pre-scheduled task ${task.id} (${task.title}) with ${delay}ms delay for job ${jobId}`)
+      console.log(`🏃 runningTasks now contains:`, Array.from(runningTasks))
+      
       setTimeout(() => {
-        console.log(`🚀 Starting task ${task.id} (${task.title}) with ${delay}ms delay`)
-        runningTasks.add(task.id)
-        console.log(`🏃 runningTasks now contains:`, Array.from(runningTasks))
+        console.log(`🚀 Actually starting task ${task.id} (${task.title}) after ${delay}ms delay`)
         
         // Update task status to running immediately (with safe update)
         updateTaskStatus(jobId, task.id, 'running', {
@@ -328,10 +338,10 @@ async function executeTask(
   const prompt = `Task: ${task.title}. Description: ${task.description}. Working Directory: ${workDirectory}. Please complete this task step by step. You have access to all MCP tools for file operations, terminal commands, and any other capabilities you need. Work in the specified directory and complete the task fully. IMPORTANT: When you have successfully finished the task, end your response with exactly "###TASK_SUCCESS###" (no quotes). If the task fails for any reason, end your response with exactly "###TASK_FAILED###" (no quotes). This is critical for automated tracking.`
 
   try {
-    console.log(`🔧 Initializing terminal for task ${task.id}`)
+    console.log(`🔧 Initializing terminal for task ${task.id} (jobId: ${jobId})`)
     // Create terminal for this task
     await initializeClaudeTerminal(task.id, workDirectory)
-    console.log(`✅ Terminal initialized for task ${task.id}`)
+    console.log(`✅ Terminal initialized for task ${task.id} (jobId: ${jobId})`)
 
     // Log the task start
     const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
@@ -373,8 +383,11 @@ async function initializeClaudeTerminal(terminalId: string, workDirectory: strin
     
     while (retryCount < maxRetries) {
       try {
+        console.log(`📞 Calling window.electronAPI.createTerminal for ${terminalId}, attempt ${retryCount + 1}`)
         terminalResult = await window.electronAPI.createTerminal(workDirectory, terminalId)
+        console.log(`📋 Terminal creation result for ${terminalId}:`, terminalResult)
         if (terminalResult.success) {
+          console.log(`✅ Terminal ${terminalId} created successfully on attempt ${retryCount + 1}`)
           break
         } else {
           console.warn(`Terminal creation attempt ${retryCount + 1} failed: ${terminalResult.error}`)
@@ -436,6 +449,14 @@ async function initializeClaudeTerminal(terminalId: string, workDirectory: strin
     await new Promise(resolve => setTimeout(resolve, 1000))
     
     console.log(`✅ Terminal ${terminalId} initialized and ready for Claude execution`)
+    
+    // Verify terminal is visible in UI
+    try {
+      const allTerminals = await (window.electronAPI as any).getAllTerminals()
+      console.log(`📋 All terminals after creating ${terminalId}:`, allTerminals)
+    } catch (error) {
+      console.warn('Failed to get all terminals:', error)
+    }
     
   } catch (error) {
     console.error('Failed to initialize Claude terminal:', error)
@@ -713,6 +734,15 @@ export const useStore = create<AppState>((set, get) => {
     const { submitPRD } = window.electronAPI
     
     set({ isSubmitting: true })
+    
+    // Clear all existing terminals before starting new planning
+    try {
+      console.log('🧹 Clearing all terminals before new planning...')
+      await (window.electronAPI as any).clearAllTerminals()
+      console.log('✅ All terminals cleared')
+    } catch (error) {
+      console.warn('Failed to clear terminals:', error)
+    }
     
     // Check if there's an existing planning job and cancel it
     const currentState = get()

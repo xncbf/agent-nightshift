@@ -85,9 +85,9 @@ function updateTaskStatus(jobId: string, taskId: string, status: string, additio
     return
   }
 
-  // Create new nodes array with only the specific task updated
+  // Ensure we preserve ALL nodes in the workflow plan
   const updatedNodes = currentJob.workflowPlan.nodes.map((n: any) =>
-    n.id === taskId ? { ...n, status } : n
+    n.id === taskId ? { ...n, status } : { ...n }
   )
   
   const updatedWorkflowPlan = {
@@ -113,6 +113,7 @@ function updateTaskStatus(jobId: string, taskId: string, status: string, additio
   
   updateJob(jobId, updateData)
   console.log(`📊 Updated task ${taskId} status to ${status}, workflow nodes: ${updatedWorkflowPlan.nodes.length}`)
+  console.log(`📋 Workflow node types:`, updatedWorkflowPlan.nodes.map((n: any) => `${n.id}(${n.type})`).join(', '))
 }
 
 // Workflow execution function
@@ -140,8 +141,8 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
     console.error('Failed to register job with main process:', error)
   }
   
-  // Get task nodes and sort by dependencies
-  const taskNodes = workflowPlan.nodes.filter((n: any) => n.type === 'task')
+  // Get initial task nodes and sort by dependencies
+  const initialTaskNodes = workflowPlan.nodes.filter((n: any) => n.type === 'task')
   
   // Update all tasks to pending except start
   const resetNodes = workflowPlan.nodes.map((node: any) => ({
@@ -152,12 +153,15 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
   updateJob(jobId, {
     workflowPlan: { ...workflowPlan, nodes: resetNodes }
   })
+  
+  console.log(`🔄 Workflow reset completed. Total nodes: ${resetNodes.length}`)
+  console.log(`📋 Reset node types:`, resetNodes.map((n: any) => `${n.id}(${n.type})`).join(', '))
 
   // Execute tasks in dependency order
   const completedTasks = new Set(['start'])
   const runningTasks = new Set()
 
-  while (completedTasks.size - 1 < taskNodes.length) { // -1 for start node
+  while (completedTasks.size - 1 < initialTaskNodes.length) { // -1 for start node
     // Check execution controller first
     const controller = executionControllers.get(jobId)
     if (controller?.shouldStop || controller?.shouldPause) {
@@ -173,7 +177,15 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
     }
     
     // Find tasks that can run (all dependencies completed)
-    const readyTasks = taskNodes.filter((task: any) => {
+    // Always get current workflow state to avoid stale node references
+    const currentJobState = useStore.getState().jobs.find(j => j.id === jobId)
+    if (!currentJobState?.workflowPlan) {
+      console.warn(`Job ${jobId} or workflow plan not found during task filtering`)
+      break
+    }
+    
+    const currentTaskNodes = currentJobState.workflowPlan.nodes.filter((n: any) => n.type === 'task')
+    const readyTasks = currentTaskNodes.filter((task: any) => {
       const isReady = task.status === 'pending' && 
         task.dependencies.every((dep: string) => completedTasks.has(dep)) &&
         !runningTasks.has(task.id) &&
@@ -251,7 +263,7 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
             
             // Update task status to completed (with safe update)
             updateTaskStatus(jobId, task.id, 'completed', {
-              progress: Math.round((completedTasks.size - 1) / taskNodes.length * 100),
+              progress: Math.round((completedTasks.size - 1) / initialTaskNodes.length * 100),
               logs: [`✅ Task completed: ${task.title}`]
             })
           })
@@ -284,10 +296,9 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
       console.log('Execution stopped - status already set to ready')
       // Status already set to ready, don't change it
     } else {
-      // Normal completion check
-      const allTasksCompleted = taskNodes.every((task: any) => 
-        finalJob.workflowPlan!.nodes.find((n: any) => n.id === task.id)?.status === 'completed'
-      )
+      // Normal completion check - use current task nodes from final job state
+      const finalTaskNodes = finalJob.workflowPlan.nodes.filter((n: any) => n.type === 'task')
+      const allTasksCompleted = finalTaskNodes.every((task: any) => task.status === 'completed')
       
       updateJob(jobId, {
         status: allTasksCompleted ? 'completed' : 'failed',

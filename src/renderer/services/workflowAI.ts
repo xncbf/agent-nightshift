@@ -84,52 +84,112 @@ export class WorkflowAI {
     
     const edges: Array<{ id: string; source: string; target: string }> = []
     
-    // For parallel execution, arrange nodes horizontally
+    // For parallel execution, arrange nodes by dependency levels
     if (analysis.executionType === 'parallel') {
-      let xOffset = 100
-      const yPos = 250
+      // Calculate dependency levels for each task
+      const taskLevels = new Map<string, number>()
       
-      for (const task of analysis.tasks) {
-        const node: TaskNode = {
-          id: task.id,
-          title: task.prompt.substring(0, 50) + (task.prompt.length > 50 ? '...' : ''),
-          description: task.prompt,
-          type: 'task',
-          status: 'pending',
-          position: { x: xOffset, y: yPos },
-          duration: 5,
-          dependencies: (task.dependencies && task.dependencies.length > 0) ? task.dependencies : ['start']
-        }
-        nodes.push(node)
-        
-        // Connect based on dependencies
-        for (const dep of node.dependencies) {
-          edges.push({
-            id: `${dep}-${node.id}`,
-            source: dep,
-            target: node.id
-          })
+      // Helper function to calculate dependency level recursively
+      const calculateLevel = (taskId: string): number => {
+        if (taskLevels.has(taskId)) {
+          return taskLevels.get(taskId)!
         }
         
-        xOffset += 250
+        const task = analysis.tasks.find((t: any) => t.id === taskId)
+        if (!task) return 0
+        
+        const deps = task.dependencies || ['start']
+        let maxLevel = 0
+        
+        for (const dep of deps) {
+          if (dep === 'start') {
+            maxLevel = Math.max(maxLevel, 0)
+          } else {
+            maxLevel = Math.max(maxLevel, calculateLevel(dep) + 1)
+          }
+        }
+        
+        taskLevels.set(taskId, maxLevel)
+        return maxLevel
       }
       
-      // Connect all to end
+      // Calculate levels for all tasks
+      for (const task of analysis.tasks) {
+        calculateLevel(task.id)
+      }
+      
+      // Group tasks by level
+      const levelGroups = new Map<number, any[]>()
+      for (const task of analysis.tasks) {
+        const level = taskLevels.get(task.id) || 0
+        if (!levelGroups.has(level)) {
+          levelGroups.set(level, [])
+        }
+        levelGroups.get(level)!.push(task)
+      }
+      
+      // Arrange nodes by level
+      for (const [level, tasks] of levelGroups) {
+        const yPos = 250 + level * 150 // Each level 150px down
+        let xOffset = 100 + (level > 0 ? 50 : 0) // Slight indent for dependent tasks
+        
+        for (const task of tasks) {
+          const node: TaskNode = {
+            id: task.id,
+            title: task.prompt.substring(0, 50) + (task.prompt.length > 50 ? '...' : ''),
+            description: task.prompt,
+            type: 'task',
+            status: 'pending',
+            position: { x: xOffset, y: yPos },
+            duration: 5,
+            dependencies: (task.dependencies && task.dependencies.length > 0) ? task.dependencies : ['start']
+          }
+          nodes.push(node)
+          
+          // Connect based on dependencies
+          for (const dep of node.dependencies) {
+            edges.push({
+              id: `${dep}-${node.id}`,
+              source: dep,
+              target: node.id
+            })
+          }
+          
+          xOffset += 300 // More space between nodes in same level
+        }
+      }
+      
+      // Find leaf tasks (tasks that don't have other tasks depending on them)
+      const leafTasks = analysis.tasks.filter((task: any) => {
+        const taskId = task.id
+        return !analysis.tasks.some((otherTask: any) => 
+          otherTask.dependencies && otherTask.dependencies.includes(taskId)
+        )
+      })
+      
+      // If no specific leaf tasks found, use all tasks (for pure parallel execution)
+      const finalDependencies = leafTasks.length > 0 ? leafTasks.map((t: any) => t.id) : analysis.tasks.map((t: any) => t.id)
+      
+      // Calculate the maximum level to position Complete node below all tasks
+      const maxLevel = Math.max(...Array.from(taskLevels.values()))
+      const completeYPos = 250 + (maxLevel + 1) * 150
+      
       const endNode: TaskNode = {
         id: 'end',
         title: 'Complete',
         description: 'All tasks completed',
         type: 'end',
         status: 'pending',
-        position: { x: 100 + (analysis.tasks.length - 1) * 125, y: 400 },
-        dependencies: analysis.tasks.map((t: any) => t.id)
+        position: { x: 250, y: completeYPos }, // Center horizontally
+        dependencies: finalDependencies
       }
       nodes.push(endNode)
       
-      for (const task of analysis.tasks) {
+      // Connect only leaf tasks to end
+      for (const taskId of finalDependencies) {
         edges.push({
-          id: `${task.id}-end`,
-          source: task.id,
+          id: `${taskId}-end`,
+          source: taskId,
           target: 'end'
         })
       }

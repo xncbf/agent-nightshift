@@ -63,6 +63,58 @@ interface AppState {
 // Global execution controllers
 const executionControllers = new Map<string, { shouldStop: boolean, shouldPause: boolean }>()
 
+// Terminal retry managers - each terminal has its own retry logic
+const terminalRetryManagers = new Map<string, {
+  retryCount: number
+  maxRetries: number
+  isRetrying: boolean
+  lastAttemptTime: number
+}>()
+
+// Safe task status updater to prevent workflow plan corruption
+function updateTaskStatus(jobId: string, taskId: string, status: string, additionalUpdates?: { 
+  currentTask?: string
+  logs?: string[]
+  progress?: number
+}) {
+  const { updateJob } = useStore.getState()
+  const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
+  
+  if (!currentJob?.workflowPlan) {
+    console.warn(`Cannot update task ${taskId}: job ${jobId} or workflow plan not found`)
+    return
+  }
+
+  // Create new nodes array with only the specific task updated
+  const updatedNodes = currentJob.workflowPlan.nodes.map((n: any) =>
+    n.id === taskId ? { ...n, status } : n
+  )
+  
+  const updatedWorkflowPlan = {
+    ...currentJob.workflowPlan,
+    nodes: updatedNodes
+  }
+  
+  const updateData: any = {
+    workflowPlan: updatedWorkflowPlan
+  }
+  
+  if (additionalUpdates?.currentTask) {
+    updateData.currentTask = additionalUpdates.currentTask
+  }
+  
+  if (additionalUpdates?.logs) {
+    updateData.logs = [...(currentJob.logs || []), ...additionalUpdates.logs]
+  }
+  
+  if (additionalUpdates?.progress !== undefined) {
+    updateData.progress = additionalUpdates.progress
+  }
+  
+  updateJob(jobId, updateData)
+  console.log(`📊 Updated task ${taskId} status to ${status}, workflow nodes: ${updatedWorkflowPlan.nodes.length}`)
+}
+
 // Workflow execution function
 async function executeWorkflowTasks(jobId: string, job: Job) {
   const { workflowPlan } = job
@@ -124,7 +176,8 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
     const readyTasks = taskNodes.filter((task: any) => {
       const isReady = task.status === 'pending' && 
         task.dependencies.every((dep: string) => completedTasks.has(dep)) &&
-        !runningTasks.has(task.id)
+        !runningTasks.has(task.id) &&
+        !completedTasks.has(task.id) // Prevent re-execution of completed tasks
       
       // Debug log
       if (task.status === 'pending') {
@@ -134,6 +187,7 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
           completedTasks: Array.from(completedTasks),
           depsCompleted: task.dependencies.every((dep: string) => completedTasks.has(dep)),
           isRunning: runningTasks.has(task.id),
+          isAlreadyCompleted: completedTasks.has(task.id),
           isReady
         })
       }
@@ -167,57 +221,52 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
       }
     }
 
-    // Start ready tasks
-    for (const task of readyTasks) {
-      runningTasks.add(task.id)
-      executeTask(jobId, task, workDirectory, aiProvider, openaiModel, claudeModel)
-        .then(() => {
-          runningTasks.delete(task.id)
-          completedTasks.add(task.id)
-          
-          console.log(`Task ${task.id} completed. CompletedTasks:`, Array.from(completedTasks))
-          
-          // Update task status to completed
-          const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
-          if (currentJob?.workflowPlan) {
-            const updatedNodes = currentJob.workflowPlan.nodes.map((n: any) =>
-              n.id === task.id ? { ...n, status: 'completed' } : n
-            )
-            updateJob(jobId, {
-              workflowPlan: { ...currentJob.workflowPlan, nodes: updatedNodes },
-              progress: Math.round((completedTasks.size - 1) / taskNodes.length * 100)
+    // Start ready tasks with staggered delays to allow parallel execution
+    console.log(`🎲 Found ${readyTasks.length} ready tasks:`, readyTasks.map(t => `${t.id}(${t.title})`))
+    
+    // Start all tasks with staggered delays but don't wait for completion
+    readyTasks.forEach((task, index) => {
+      const delay = index * 1000 // 1 second delay between starts
+      
+      setTimeout(() => {
+        console.log(`🚀 Starting task ${task.id} (${task.title}) with ${delay}ms delay`)
+        runningTasks.add(task.id)
+        console.log(`🏃 runningTasks now contains:`, Array.from(runningTasks))
+        
+        // Update task status to running immediately (with safe update)
+        updateTaskStatus(jobId, task.id, 'running', {
+          currentTask: `Executing: ${task.title}`,
+          logs: [`🚀 Starting task: ${task.title}`]
+        })
+        
+        // Execute task with proper Promise handling
+        console.log(`📞 Calling executeTask for ${task.id}`)
+        executeTask(jobId, task, workDirectory, aiProvider, openaiModel, claudeModel)
+          .then(() => {
+            // Mark as completed
+            runningTasks.delete(task.id)
+            completedTasks.add(task.id)
+            
+            console.log(`✅ Task ${task.id} completed successfully. CompletedTasks:`, Array.from(completedTasks))
+            
+            // Update task status to completed (with safe update)
+            updateTaskStatus(jobId, task.id, 'completed', {
+              progress: Math.round((completedTasks.size - 1) / taskNodes.length * 100),
+              logs: [`✅ Task completed: ${task.title}`]
             })
-          }
-        })
-        .catch((error) => {
-          runningTasks.delete(task.id)
-          console.error(`Task ${task.id} failed:`, error)
-          
-          // Update task status to failed
-          const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
-          if (currentJob?.workflowPlan) {
-            const updatedNodes = currentJob.workflowPlan.nodes.map((n: any) =>
-              n.id === task.id ? { ...n, status: 'failed' } : n
-            )
-            updateJob(jobId, {
-              workflowPlan: { ...currentJob.workflowPlan, nodes: updatedNodes },
-              logs: [...(currentJob.logs || []), `❌ Task ${task.title} failed: ${error.message}`]
+          })
+          .catch((error) => {
+            // Mark as failed
+            runningTasks.delete(task.id)
+            console.error(`❌ Task ${task.id} failed:`, error)
+            
+            // Update task status to failed (with safe update)
+            updateTaskStatus(jobId, task.id, 'failed', {
+              logs: [`❌ Task failed: ${task.title} - ${error instanceof Error ? error.message : String(error)}`]
             })
-          }
-        })
-
-      // Update task status to running
-      const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
-      if (currentJob?.workflowPlan) {
-        const updatedNodes = currentJob.workflowPlan.nodes.map((n: any) =>
-          n.id === task.id ? { ...n, status: 'running' } : n
-        )
-        updateJob(jobId, {
-          workflowPlan: { ...currentJob.workflowPlan, nodes: updatedNodes },
-          currentTask: `Executing: ${task.title}`
-        })
-      }
-    }
+          })
+      }, delay)
+    })
 
     await new Promise(resolve => setTimeout(resolve, 500))
   }
@@ -261,20 +310,17 @@ async function executeTask(
   _openaiModel: string,
   _claudeModel: string
 ) {
+  console.log(`🎯 executeTask called for ${task.id} (${task.title})`)
   const { updateJob } = useStore.getState()
   
-  // Create prompt for Claude Code CLI
-  const prompt = `Task: ${task.title}
-
-Description: ${task.description}
-
-Working Directory: ${workDirectory}
-
-Please complete this task step by step. You have access to all MCP tools for file operations, terminal commands, and any other capabilities you need. Work in the specified directory and complete the task fully.`
+  // Create prompt for Claude Code CLI (using spaces instead of newlines for command line compatibility)
+  const prompt = `Task: ${task.title}. Description: ${task.description}. Working Directory: ${workDirectory}. Please complete this task step by step. You have access to all MCP tools for file operations, terminal commands, and any other capabilities you need. Work in the specified directory and complete the task fully. IMPORTANT: When you have successfully finished the task, end your response with exactly "###TASK_SUCCESS###" (no quotes). If the task fails for any reason, end your response with exactly "###TASK_FAILED###" (no quotes). This is critical for automated tracking.`
 
   try {
-    // Create terminal for this task and initialize with Claude
+    console.log(`🔧 Initializing terminal for task ${task.id}`)
+    // Create terminal for this task
     await initializeClaudeTerminal(task.id, workDirectory)
+    console.log(`✅ Terminal initialized for task ${task.id}`)
 
     // Log the task start
     const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
@@ -284,8 +330,10 @@ Please complete this task step by step. You have access to all MCP tools for fil
       })
     }
 
-    // Send prompt to waiting Claude instance
-    await sendPromptToClaudeTerminal(prompt, task.id)
+    console.log(`🚀 Executing Claude with prompt for task ${task.id}`)
+    // Execute Claude directly with prompt instead of interactive mode
+    await executeClaudeWithPrompt(prompt, task.id, workDirectory)
+    console.log(`✅ Claude execution completed for task ${task.id}`)
 
     // Log task completion (Note: in reality we'd monitor output to detect completion)
     const updatedJob = useStore.getState().jobs.find(j => j.id === jobId)
@@ -296,25 +344,47 @@ Please complete this task step by step. You have access to all MCP tools for fil
     }
 
   } catch (error: unknown) {
+    console.error(`❌ executeTask failed for ${task.id}:`, error)
     const errorMessage = error instanceof Error ? error.message : String(error)
     throw new Error(`Failed to execute task: ${errorMessage}`)
   }
 }
 
-// Initialize terminal with Claude Code CLI in interactive mode
+// Initialize terminal for Claude execution
 async function initializeClaudeTerminal(terminalId: string, workDirectory: string) {
   try {
     console.log(`🔄 Creating terminal ${terminalId} in directory: ${workDirectory}`)
     
-    // Create terminal for this task
-    const terminalResult = await window.electronAPI.createTerminal(workDirectory, terminalId)
-    if (!terminalResult.success) {
-      throw new Error(`Failed to create terminal: ${terminalResult.error}`)
+    // Add retry logic for terminal creation to prevent stuck terminals
+    let terminalResult
+    let retryCount = 0
+    const maxRetries = 3
+    
+    while (retryCount < maxRetries) {
+      try {
+        terminalResult = await window.electronAPI.createTerminal(workDirectory, terminalId)
+        if (terminalResult.success) {
+          break
+        } else {
+          console.warn(`Terminal creation attempt ${retryCount + 1} failed: ${terminalResult.error}`)
+        }
+      } catch (error) {
+        console.warn(`Terminal creation attempt ${retryCount + 1} error:`, error)
+      }
+      
+      retryCount++
+      if (retryCount < maxRetries) {
+        console.log(`Retrying terminal creation in 2 seconds...`)
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+    }
+    
+    if (!terminalResult?.success) {
+      throw new Error(`Failed to create terminal after ${maxRetries} attempts: ${terminalResult?.error || 'Unknown error'}`)
     }
 
     // Set up terminal output monitoring
     let terminalOutput = ''
-    let isClaudeReady = false
     let isTerminalReady = false
     
     const outputHandler = (_event: any, data: { terminalId: string; data: string }) => {
@@ -325,14 +395,6 @@ async function initializeClaudeTerminal(terminalId: string, workDirectory: strin
         // Check for terminal readiness (prompt appeared)
         if (terminalOutput.includes('$') || terminalOutput.includes('%') || terminalOutput.includes('>')) {
           isTerminalReady = true
-        }
-        
-        // Check for Claude startup indicators
-        if (terminalOutput.includes('Welcome to Claude Code!') || 
-            terminalOutput.includes('claude>') ||
-            terminalOutput.includes('cwd:') ||
-            terminalOutput.includes('I can help you')) {
-          isClaudeReady = true
         }
       }
     }
@@ -348,46 +410,21 @@ async function initializeClaudeTerminal(terminalId: string, workDirectory: strin
       await new Promise(resolve => setTimeout(resolve, 100))
     }
     
+    // Clean up listener
+    unsubscribe()
+    
     if (!isTerminalReady) {
       console.warn(`Terminal ${terminalId} not ready after ${terminalTimeout/1000}s, proceeding anyway. Output: ${terminalOutput}`)
     } else {
       console.log(`✅ Terminal ${terminalId} is ready`)
     }
 
-    // Change to working directory with longer wait
+    // Change to working directory
     console.log(`📂 Changing to directory: ${workDirectory}`)
     await (window.electronAPI as any).sendTerminalInput(`cd "${workDirectory}"\n`, terminalId)
-    await new Promise(resolve => setTimeout(resolve, 1000)) // Increased wait time
+    await new Promise(resolve => setTimeout(resolve, 1000))
     
-    // Check if Claude is already running by looking at current output
-    if (terminalOutput.includes('Welcome to Claude Code!') || terminalOutput.includes('cwd:')) {
-      console.log(`✅ Claude Code already running in terminal ${terminalId}`)
-      isClaudeReady = true
-    } else {
-      // Start Claude Code CLI in interactive mode
-      console.log(`🚀 Starting Claude Code CLI in terminal ${terminalId}`)
-      await (window.electronAPI as any).sendTerminalInput('claude\n', terminalId)
-    }
-    
-    // Wait for Claude to be ready (with timeout)
-    console.log(`⏳ Waiting for Claude Code to be ready in terminal ${terminalId}...`)
-    const startTime = Date.now()
-    const timeout = 15000 // Increased to 15 seconds timeout
-    
-    while (!isClaudeReady && (Date.now() - startTime) < timeout) {
-      await new Promise(resolve => setTimeout(resolve, 300)) // Slightly longer polling interval
-    }
-    
-    // Clean up listener
-    unsubscribe()
-    
-    if (!isClaudeReady) {
-      console.error(`❌ Claude Code CLI did not start within ${timeout/1000} seconds`)
-      console.error(`Terminal output: ${terminalOutput}`)
-      throw new Error(`Claude Code CLI did not start within ${timeout/1000} seconds. Output: ${terminalOutput}`)
-    }
-    
-    console.log(`✅ Claude Code ready in terminal ${terminalId}`)
+    console.log(`✅ Terminal ${terminalId} initialized and ready for Claude execution`)
     
   } catch (error) {
     console.error('Failed to initialize Claude terminal:', error)
@@ -395,31 +432,113 @@ async function initializeClaudeTerminal(terminalId: string, workDirectory: strin
   }
 }
 
-// Send prompt to Claude that's already running in terminal
-async function sendPromptToClaudeTerminal(prompt: string, terminalId: string) {
+// Execute Claude directly with prompt instead of interactive mode
+async function executeClaudeWithPrompt(prompt: string, terminalId: string, _workDirectory: string) {
+  // Initialize retry manager for this terminal if not exists
+  if (!terminalRetryManagers.has(terminalId)) {
+    terminalRetryManagers.set(terminalId, {
+      retryCount: 0,
+      maxRetries: 2,
+      isRetrying: false,
+      lastAttemptTime: 0
+    })
+  }
+  
+  const retryManager = terminalRetryManagers.get(terminalId)!
+  console.log(`🔥 executeClaudeWithPrompt called for terminal ${terminalId}, retry ${retryManager.retryCount}/${retryManager.maxRetries}`)
+  
+  // Check if we've exceeded max retries
+  if (retryManager.retryCount > retryManager.maxRetries) {
+    terminalRetryManagers.delete(terminalId)
+    throw new Error(`Command failed to execute after ${retryManager.maxRetries + 1} attempts in terminal ${terminalId}`)
+  }
+  
   try {
+    console.log(`🎧 Setting up output monitoring for terminal ${terminalId}`)
     // Set up output monitoring to detect when Claude finishes
     let terminalOutput = ''
     let isTaskComplete = false
+    let commandStartTime: number
+    let initialOutputLength = 0
     
     const outputHandler = (_event: any, data: { terminalId: string; data: string }) => {
       if (data.terminalId === terminalId) {
         terminalOutput += data.data
+        console.log(`📥 Terminal ${terminalId} received data: ${data.data.length} chars`)
         
-        // Check for task completion indicators
-        if (isClaudeCommandComplete(terminalOutput)) {
+        // Check for task completion indicators with start time (only if command started)
+        if (commandStartTime && isClaudeCommandComplete(terminalOutput, commandStartTime)) {
           isTaskComplete = true
         }
       }
     }
     
+    console.log(`🔗 Subscribing to terminal data for ${terminalId}`)
     const unsubscribe = (window.electronAPI as any).onTerminalData(outputHandler)
     
-    // Send the entire prompt as one input to Claude
-    await (window.electronAPI as any).sendTerminalInput(prompt, terminalId)
+    // Wait a moment to get current terminal state
+    console.log(`⏳ Waiting 500ms to capture initial terminal state...`)
+    await new Promise(resolve => setTimeout(resolve, 500))
     
-    // Send Enter to execute the prompt
-    await (window.electronAPI as any).sendTerminalInput('\n', terminalId)
+    // Capture initial terminal state
+    initialOutputLength = terminalOutput.length
+    console.log(`📸 Initial terminal output length: ${initialOutputLength} (retry ${retryManager.retryCount + 1}/${retryManager.maxRetries + 1})`)
+    
+    // Execute Claude directly with the prompt and skip permissions
+    // Use single quotes to avoid escaping issues with double quotes in prompt
+    const claudeCommand = `claude -p '${prompt.replace(/'/g, "'\"'\"'")}' --dangerously-skip-permissions\n`
+    console.log(`🚀 Executing Claude command in terminal ${terminalId}`)
+    console.log(`📝 Command length: ${claudeCommand.length}`)
+    console.log(`📝 Prompt preview: ${prompt.substring(0, 100)}...`)
+    
+    console.log(`📤 Sending command to terminal ${terminalId}...`)
+    await (window.electronAPI as any).sendTerminalInput(claudeCommand, terminalId)
+    console.log(`✅ Command sent to terminal ${terminalId}`)
+    
+    // Set command start time after sending the command
+    commandStartTime = Date.now()
+    
+    // Give Claude a moment to start before monitoring
+    await new Promise(resolve => setTimeout(resolve, 3000))
+    
+    // Check if terminal output changed (command actually executed)
+    const outputAfterCommand = terminalOutput.length
+    const outputChanged = outputAfterCommand > initialOutputLength + 10 // Allow some margin
+    
+    if (!outputChanged) {
+      console.warn(`⚠️ No terminal output change detected after 3 seconds (${initialOutputLength} -> ${outputAfterCommand})`)
+      console.log(`📋 Current terminal output: "${terminalOutput.slice(-100)}"`) // Show last 100 chars
+      
+      if (retryManager.retryCount < retryManager.maxRetries) {
+        retryManager.retryCount++
+        retryManager.isRetrying = true
+        retryManager.lastAttemptTime = Date.now()
+        
+        console.log(`🔄 Retrying command execution for terminal ${terminalId} (attempt ${retryManager.retryCount + 1}/${retryManager.maxRetries + 1})`)
+        unsubscribe()
+        
+        // Clear terminal or send a simple command to refresh
+        console.log(`🧹 Sending clear command to refresh terminal ${terminalId} state`)
+        await (window.electronAPI as any).sendTerminalInput('echo "===RETRY==="\n', terminalId)
+        
+        // Wait a bit before retry
+        await new Promise(resolve => setTimeout(resolve, 3000))
+        
+        // Recursive retry with same parameters
+        return executeClaudeWithPrompt(prompt, terminalId, _workDirectory)
+      } else {
+        unsubscribe()
+        retryManager.isRetrying = false
+        terminalRetryManagers.delete(terminalId) // Clean up
+        console.error(`❌ Final attempt failed for terminal ${terminalId}. Terminal output: "${terminalOutput.slice(-200)}"`)
+        throw new Error(`Command failed to execute after ${retryManager.maxRetries + 1} attempts - no terminal output change detected`)
+      }
+    }
+    
+    console.log(`✅ Terminal output changed: ${initialOutputLength} -> ${outputAfterCommand}, command appears to be running`)
+    
+    // Mark retry as successful
+    retryManager.isRetrying = false
     
     // Wait for task completion (with timeout)
     const startTime = Date.now()
@@ -436,53 +555,79 @@ async function sendPromptToClaudeTerminal(prompt: string, terminalId: string) {
       console.warn(`Task did not complete within ${timeout/1000} seconds in terminal ${terminalId}`)
       // Don't throw error, let it continue - user can monitor in terminal
     } else {
-      console.log(`✅ Task completed in terminal ${terminalId}`)
+      const result = getTaskResult(terminalOutput)
+      if (result === 'completed') {
+        console.log(`✅ Task completed successfully in terminal ${terminalId}`)
+      } else if (result === 'failed') {
+        console.log(`❌ Task failed in terminal ${terminalId}`)
+        throw new Error('Task failed - FAILED signal received from Claude')
+      } else {
+        console.log(`⚠️ Task finished with unknown result in terminal ${terminalId}`)
+      }
     }
     
+    // Clean up retry manager on successful completion
+    terminalRetryManagers.delete(terminalId)
+    
   } catch (error) {
-    console.error('Failed to send prompt to Claude terminal:', error)
+    console.error(`Failed to execute Claude with prompt in terminal ${terminalId}:`, error)
+    // Clean up retry manager on error
+    terminalRetryManagers.delete(terminalId)
     throw error
   }
 }
 
-// Helper function to detect Claude Code CLI completion
-export function isClaudeCommandComplete(terminalOutput: string): boolean {
-  // Check for Claude Code completion patterns
-  const lines = terminalOutput.split('\n')
-  const lastFewLines = lines.slice(-10).join('\n') // Check last 10 lines
+// Helper function to detect Claude Code CLI completion based on explicit signals
+export function isClaudeCommandComplete(terminalOutput: string, commandStartTime: number): boolean {
+  // Count occurrences of the signal to distinguish between prompt and actual result
+  const successCount = (terminalOutput.match(/###TASK_SUCCESS###/g) || []).length
+  const failedCount = (terminalOutput.match(/###TASK_FAILED###/g) || []).length
   
-  // Look for Claude's completion indicators
-  const completionIndicators = [
-    '🎉',
-    '✅',
-    'Task completed',
-    'task completed',
-    'Successfully completed',
-    'successfully completed',
-    'Done!',
-    'done!',
-    'Finished',
-    'finished',
-    'All set!',
-    'all set!'
-  ]
+  // Must wait at least 5 seconds after command start to avoid detecting prompt
+  const timeElapsed = Date.now() - commandStartTime
+  const minWaitTime = 5000 // Reduced to 5 seconds
   
-  const hasCompletionIndicator = completionIndicators.some(indicator => 
-    lastFewLines.toLowerCase().includes(indicator.toLowerCase())
-  )
+  // Debug logging
+  console.log(`🔍 Completion check: successCount=${successCount}, failedCount=${failedCount}, timeElapsed=${timeElapsed}ms`)
   
-  // Also check if we're back at a shell prompt (but not immediately after starting)
-  const hasShellPrompt = lastFewLines.includes('$ ') || 
-                        lastFewLines.includes('% ') ||
-                        lastFewLines.includes('❯ ')
+  if (timeElapsed < minWaitTime) {
+    console.log(`⏳ Waiting for minimum time (${minWaitTime}ms), current: ${timeElapsed}ms`)
+    return false
+  }
   
-  // Look for error indicators
-  const hasError = lastFewLines.includes('Error:') || 
-                  lastFewLines.includes('error:') ||
-                  lastFewLines.includes('Failed:') ||
-                  lastFewLines.includes('failed:')
+  // If we find the signal more than once, it means Claude actually responded with it
+  // (once in prompt, once in response)
+  if (successCount >= 2) {
+    console.log('🎯 Task completion detected: ###TASK_SUCCESS### signal found in response')
+    return true
+  }
   
-  return (hasCompletionIndicator || hasShellPrompt) && !hasError
+  if (failedCount >= 2) {
+    console.log('🎯 Task completion detected: ###TASK_FAILED### signal found in response')
+    return true
+  }
+  
+  return false
+}
+
+// Helper function to check if task was successful or failed
+export function getTaskResult(terminalOutput: string): 'completed' | 'failed' | 'unknown' {
+  // Count occurrences to distinguish between prompt and actual result
+  const successCount = (terminalOutput.match(/###TASK_SUCCESS###/g) || []).length
+  const failedCount = (terminalOutput.match(/###TASK_FAILED###/g) || []).length
+  
+  console.log(`📊 Task result check: successCount=${successCount}, failedCount=${failedCount}`)
+  
+  // If signal appears 2 or more times, Claude actually responded with it
+  if (successCount >= 2) {
+    return 'completed'
+  }
+  
+  if (failedCount >= 2) {
+    return 'failed'
+  }
+  
+  return 'unknown'
 }
 
 export const useStore = create<AppState>((set, get) => {

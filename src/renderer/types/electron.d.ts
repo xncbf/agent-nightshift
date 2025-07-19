@@ -20,12 +20,6 @@ export interface ElectronAPI {
   // File system
   selectDirectory: () => Promise<{ filePaths: string[]; canceled: boolean }>
   
-  // Terminal
-  createTerminal: (workDirectory: string, terminalId?: string) => Promise<{ success: boolean; error?: string }>
-  sendTerminalInput: (data: string, terminalId?: string) => Promise<void>
-  resizeTerminal: (cols: number, rows: number, terminalId?: string) => Promise<void>
-  onTerminalData: (callback: (event: any, data: { terminalId: string; data: string }) => void) => () => void
-  
   // AI Provider management
   getAIProviders: () => Promise<Array<{
     id: string
@@ -36,6 +30,34 @@ export interface ElectronAPI {
   getCurrentProvider: () => Promise<string>
   setAIProvider: (providerId: string) => Promise<{ success: boolean; error?: string }>
   checkProviderAvailability: () => Promise<Record<string, boolean>>
+  
+  // Claude direct execution
+  executeClaudeCommand: (options: {
+    claudePath: string
+    args: string[]
+    workDirectory: string
+    timeout?: number
+    env?: Record<string, string>
+  }) => Promise<{
+    success: boolean
+    output?: string
+    error?: string
+    hasSuccess?: boolean
+    hasFailed?: boolean
+  }>
+  
+  // File operations
+  writeFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>
+  deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>
+  
+  // Claude environment validation
+  validateClaudeEnvironment: () => Promise<{
+    isValid: boolean
+    claudePath: string | null
+    mcpServers: string[]
+    errors: string[]
+    warnings: string[]
+  }>
 }
 
 declare global {

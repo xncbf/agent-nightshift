@@ -7,7 +7,7 @@ import { TaskNode, WorkflowPlan } from '../types/workflow'
 import { BarChart3, Network, CheckCircle, XCircle, Clock, List, Activity, Folder, Settings } from 'lucide-react'
 
 export const WorkflowStatus: React.FC = () => {
-  const { jobs, activeJobId, approveWorkflowPlan, rejectWorkflowPlan, updateJob, workDirectory, setWorkDirectory } = useStore()
+  const { jobs, activeJobId, approveWorkflowPlan, rejectWorkflowPlan, resumeJob, updateJob, workDirectory, setWorkDirectory } = useStore()
   const activeJob = jobs.find(job => job.id === activeJobId)
   const [showDirectorySettings, setShowDirectorySettings] = useState(true)
   // Set default view mode based on job status
@@ -213,6 +213,39 @@ export const WorkflowStatus: React.FC = () => {
             >
               <XCircle className="w-4 h-4" />
               Reject
+            </button>
+          </div>
+        )}
+        
+        {/* Resume button for failed status */}
+        {activeJob.status === 'failed' && (
+          <div className="flex items-center gap-3 mt-3">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                resumeJob(activeJob.id)
+              }}
+              className="btn-warning flex items-center gap-2"
+              style={{
+                backgroundColor: 'var(--color-nightshift-warning)',
+                color: 'white',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                border: 'none',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                transition: 'opacity 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '0.8'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = '1'
+              }}
+            >
+              <Clock className="w-4 h-4" />
+              Resume from Failed Point
             </button>
           </div>
         )}

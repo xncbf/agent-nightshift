@@ -1,6 +1,6 @@
 import React from 'react'
 import { useStore } from '../store/useStore'
-import { CheckCircle, Clock, Zap, XCircle, Play, Pause, Square, Terminal } from 'lucide-react'
+import { CheckCircle, Clock, Zap, XCircle, Play, Pause, Square, FileText } from 'lucide-react'
 
 export const ProgressView: React.FC = () => {
   const { jobs, activeJobId, pauseJob, resumeJob, stopJob } = useStore()
@@ -221,29 +221,21 @@ export const ProgressView: React.FC = () => {
                         {node.status}
                       </span>
                       
-                      {/* Terminal View Button */}
+                      {/* View Logs Button */}
                       <button
                         onClick={() => {
-                          // Switch to output panel first
+                          // Switch to output panel to view execution logs
                           const { setFocusedPanel } = useStore.getState()
                           setFocusedPanel('output')
-                          
-                          // Switch to terminal tab for this task with small delay
-                          setTimeout(() => {
-                            const terminalEvent = new CustomEvent('switchTerminal', { 
-                              detail: { terminalId: node.id } 
-                            })
-                            window.dispatchEvent(terminalEvent)
-                          }, 100)
                         }}
                         className="p-1 rounded hover:bg-opacity-20 transition-colors"
                         style={{
                           backgroundColor: 'var(--color-nightshift-accent)' + '10',
                           color: 'var(--color-nightshift-accent)'
                         }}
-                        title={`View terminal for ${node.title}`}
+                        title={`View execution logs for ${node.title}`}
                       >
-                        <Terminal className="w-3 h-3" />
+                        <FileText className="w-3 h-3" />
                       </button>
                     </div>
                     

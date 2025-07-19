@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { PromptsEditor } from './components/PromptsEditor'
 import { WorkflowStatus } from './components/WorkflowStatus'
-import { TabbedTerminal } from './components/TabbedTerminal'
+import { ExecutionLogs } from './components/ExecutionLogs'
 import { Footer } from './components/Footer'
 import { LayoutTransition } from './components/LayoutTransition'
 import { useStore } from './store/useStore'
@@ -348,7 +348,7 @@ function App() {
           </div>
         </section>
 
-        {/* Live Output Panel */}
+        {/* Execution Logs Panel */}
         <section 
           className={`layout-panel p-6 cursor-pointer transition-all duration-300 ${
             focusedPanel === 'output' ? 'panel-maximized' :
@@ -364,7 +364,7 @@ function App() {
           }}
         >
           <div className="layout-panel-content h-full">
-            <TabbedTerminal />
+            <ExecutionLogs />
           </div>
         </section>
       </main>

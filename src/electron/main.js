@@ -1,12 +1,13 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron')
-const pty = require('node-pty')
+// Terminal removed - direct Claude execution only
 const path = require('path')
+const { spawn, execSync } = require('child_process')
+const fs = require('fs').promises
 const { AIProviderManager } = require('./aiProviderManager')
 
 let mainWindow
 const aiManager = new AIProviderManager()
 const activeJobs = new Map()
-const ptyProcesses = new Map() // Map of terminalId -> ptyProcess
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -401,70 +402,245 @@ ipcMain.handle('select-directory', async () => {
 })
 
 
-// Terminal IPC handlers
-ipcMain.handle('create-terminal', async (event, workDirectory, terminalId = 'main') => {
+// Terminal functionality removed - using direct Claude execution instead
+
+// Claude direct execution handler
+ipcMain.handle('execute-claude-command', async (event, options) => {
+  console.log('Main: Executing Claude command directly:', options)
+  
+  const { claudePath, args, workDirectory, timeout = 300000, env = {} } = options
+  
   try {
-    // Clean up existing terminal if any
-    const existingProcess = ptyProcesses.get(terminalId)
-    if (existingProcess) {
-      existingProcess.kill()
-    }
-
-    // Create new pseudo-terminal
-    const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash'
-    const ptyProcess = pty.spawn(shell, [], {
-      name: 'xterm-256color',
-      cols: 80,
-      rows: 30,
-      cwd: workDirectory || process.cwd(),
-      env: {
-        ...process.env,
-        TERM: 'xterm-256color',
-        COLORTERM: 'truecolor'
-      }
+    return new Promise((resolve) => {
+      const claudeProcess = spawn(claudePath, args, {
+        cwd: workDirectory,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          ...env
+        }
+      })
+      
+      let output = ''
+      let error = ''
+      
+      claudeProcess.stdout.on('data', (data) => {
+        output += data.toString()
+        console.log(`Claude output: ${data.toString()}`)
+      })
+      
+      claudeProcess.stderr.on('data', (data) => {
+        const errorText = data.toString()
+        error += errorText
+        // Don't log shell snapshot errors
+        if (!errorText.includes('shell-snapshots')) {
+          console.error(`Claude error: ${errorText}`)
+        }
+      })
+      
+      claudeProcess.on('close', (code) => {
+        console.log(`Claude process exited with code: ${code}`)
+        
+        if (code === 0) {
+          resolve({ 
+            success: true, 
+            output: output.trim(),
+            hasSuccess: output.includes('###TASK_SUCCESS###'),
+            hasFailed: output.includes('###TASK_FAILED###')
+          })
+        } else {
+          resolve({ 
+            success: false, 
+            error: error || `Claude process exited with code ${code}`,
+            output: output.trim()
+          })
+        }
+      })
+      
+      claudeProcess.on('error', (err) => {
+        console.error('Claude process error:', err)
+        resolve({ 
+          success: false, 
+          error: `Failed to execute Claude: ${err.message}`,
+          output: output.trim()
+        })
+      })
+      
+      // Set timeout
+      setTimeout(() => {
+        claudeProcess.kill('SIGTERM')
+        resolve({ 
+          success: false, 
+          error: 'Claude execution timeout',
+          output: output.trim()
+        })
+      }, timeout)
     })
-
-    // Store process
-    ptyProcesses.set(terminalId, ptyProcess)
-
-    // Handle terminal output
-    ptyProcess.on('data', (data) => {
-      mainWindow?.webContents.send('terminal-data', { terminalId, data })
-    })
-
-    // Handle terminal exit
-    ptyProcess.on('exit', (code) => {
-      console.log(`Terminal ${terminalId} exited with code:`, code)
-      ptyProcesses.delete(terminalId)
-    })
-
-    return { success: true }
+    
   } catch (error) {
-    console.error('Failed to create terminal:', error)
+    console.error('Claude command execution error:', error)
     return { success: false, error: error.message }
   }
 })
 
-// Handle terminal input
-ipcMain.handle('terminal-input', async (event, data, terminalId = 'main') => {
-  const ptyProcess = ptyProcesses.get(terminalId)
-  if (ptyProcess) {
-    ptyProcess.write(data)
+// File operations for Claude
+ipcMain.handle('write-file', async (event, filePath, content) => {
+  try {
+    await fs.writeFile(filePath, content, 'utf8')
+    return { success: true }
+  } catch (error) {
+    console.error('Failed to write file:', error)
+    return { success: false, error: error.message }
   }
 })
 
-// Resize terminal
-ipcMain.handle('terminal-resize', async (event, cols, rows, terminalId = 'main') => {
-  const ptyProcess = ptyProcesses.get(terminalId)
-  if (ptyProcess) {
-    ptyProcess.resize(cols, rows)
+ipcMain.handle('delete-file', async (event, filePath) => {
+  try {
+    await fs.unlink(filePath)
+    return { success: true }
+  } catch (error) {
+    console.error('Failed to delete file:', error)
+    return { success: false, error: error.message }
   }
 })
 
-// Clean up terminals on app quit
-app.on('before-quit', () => {
-  ptyProcesses.forEach((process) => {
-    process.kill()
-  })
-  ptyProcesses.clear()
+// Claude environment validation
+ipcMain.handle('validate-claude-environment', async () => {
+  console.log('Main: Validating Claude environment')
+  
+  const result = {
+    isValid: false,
+    claudePath: null,
+    mcpServers: [],
+    errors: [],
+    warnings: []
+  }
+  
+  try {
+    // 1. Find Claude CLI path
+    const claudePath = await findClaudePath()
+    if (!claudePath) {
+      result.errors.push('Claude CLI not found. Please install Claude Code.')
+      return result
+    }
+    
+    result.claudePath = claudePath
+    
+    // 2. Test Claude CLI execution
+    const canExecute = await testClaudeExecution(claudePath)
+    if (!canExecute) {
+      result.errors.push('Claude CLI found but cannot execute properly.')
+      return result
+    }
+    
+    // 3. Get MCP servers
+    const mcpServers = await getMCPServers()
+    result.mcpServers = mcpServers
+    
+    if (mcpServers.length === 0) {
+      result.warnings.push('No MCP servers configured. Some features may not work.')
+    }
+    
+    // 4. Check for required MCP servers
+    const requiredMCPs = ['chatgpt', 'terminal', 'filesystem']
+    const missingMCPs = requiredMCPs.filter(mcp => 
+      !mcpServers.some(server => server.toLowerCase().includes(mcp))
+    )
+    
+    if (missingMCPs.length > 0) {
+      result.warnings.push(`Recommended MCP servers not found: ${missingMCPs.join(', ')}`)
+    }
+    
+    result.isValid = true
+    console.log('✅ Claude environment validation successful')
+    return result
+    
+  } catch (error) {
+    console.error('❌ Claude environment validation failed:', error)
+    result.errors.push(`Validation failed: ${error.message}`)
+    return result
+  }
 })
+
+// Helper function to find Claude CLI path
+async function findClaudePath() {
+  const os = require('os')
+  const homedir = os.homedir()
+  
+  const possiblePaths = [
+    path.join(homedir, '.claude', 'local', 'claude'),
+    '/usr/local/bin/claude',
+    '/opt/homebrew/bin/claude',
+    path.join(homedir, '.local', 'bin', 'claude'),
+    path.join(homedir, '.npm-global', 'bin', 'claude'),
+  ]
+  
+  // Check each path
+  for (const candidatePath of possiblePaths) {
+    try {
+      const stats = await fs.stat(candidatePath)
+      if (stats.isFile()) {
+        // Check if executable
+        await fs.access(candidatePath, require('fs').constants.X_OK)
+        return candidatePath
+      }
+    } catch {
+      continue
+    }
+  }
+  
+  // Try which command
+  try {
+    const whichResult = execSync('which claude', { encoding: 'utf8' }).trim()
+    if (whichResult && !whichResult.includes('not found')) {
+      // Handle alias
+      if (whichResult.includes('aliased to')) {
+        const aliasMatch = whichResult.match(/aliased to (.+)/)
+        if (aliasMatch) {
+          return aliasMatch[1]
+        }
+      }
+      return whichResult
+    }
+  } catch {
+    // which command failed
+  }
+  
+  return null
+}
+
+// Helper function to test Claude CLI execution
+async function testClaudeExecution(claudePath) {
+  try {
+    execSync(`"${claudePath}" --version`, {
+      encoding: 'utf8',
+      timeout: 5000,
+      env: {
+        ...process.env,
+        CLAUDE_DISABLE_SHELL_SNAPSHOT: '1'
+      }
+    })
+    return true
+  } catch (error) {
+    console.warn('Claude execution test failed:', error.message)
+    return false
+  }
+}
+
+// Helper function to get MCP servers
+async function getMCPServers() {
+  try {
+    const configPath = path.join(require('os').homedir(), '.claude.json')
+    const configData = await fs.readFile(configPath, 'utf8')
+    const config = JSON.parse(configData)
+    
+    if (config.mcpServers && typeof config.mcpServers === 'object') {
+      return Object.keys(config.mcpServers)
+    }
+    
+    return []
+  } catch (error) {
+    console.warn('Failed to read MCP servers:', error.message)
+    return []
+  }
+}

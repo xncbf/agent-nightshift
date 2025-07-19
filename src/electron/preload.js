@@ -26,18 +26,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File system
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
   
-  // Terminal
-  createTerminal: (workDirectory, terminalId) => ipcRenderer.invoke('create-terminal', workDirectory, terminalId),
-  sendTerminalInput: (data, terminalId) => ipcRenderer.invoke('terminal-input', data, terminalId),
-  resizeTerminal: (cols, rows, terminalId) => ipcRenderer.invoke('terminal-resize', cols, rows, terminalId),
-  onTerminalData: (callback) => {
-    ipcRenderer.on('terminal-data', callback)
-    return () => ipcRenderer.removeListener('terminal-data', callback)
-  },
   
   // AI Provider management
   getAIProviders: () => ipcRenderer.invoke('get-ai-providers'),
   getCurrentProvider: () => ipcRenderer.invoke('get-current-provider'),
   setAIProvider: (providerId) => ipcRenderer.invoke('set-ai-provider', providerId),
-  checkProviderAvailability: () => ipcRenderer.invoke('check-provider-availability')
+  checkProviderAvailability: () => ipcRenderer.invoke('check-provider-availability'),
+  
+  // Claude direct execution
+  executeClaudeCommand: (options) => ipcRenderer.invoke('execute-claude-command', options),
+  writeFile: (filePath, content) => ipcRenderer.invoke('write-file', filePath, content),
+  deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
+  validateClaudeEnvironment: () => ipcRenderer.invoke('validate-claude-environment')
 })

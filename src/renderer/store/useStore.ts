@@ -404,7 +404,7 @@ async function executeClaudeDirectly(prompt: string, taskId: string, workDirecto
     // Execute Claude with prompt as argument
     const result = await window.electronAPI.executeClaudeCommand({
       claudePath,
-      args: ['-p', prompt],
+      args: ['--dangerously-skip-permissions', '-p', prompt],
       workDirectory,
       timeout: 300000, // 5 minutes
       env: {}
@@ -417,7 +417,7 @@ async function executeClaudeDirectly(prompt: string, taskId: string, workDirecto
     if (updatedJob) {
       const responseLog = []
       
-      if (result.success) {
+      if (result.success && !result.hasFailed) {
         console.log(`✅ Task ${taskId} completed successfully`)
         responseLog.push(`✅ Task completed: ${task.title}`)
         
@@ -434,20 +434,47 @@ async function executeClaudeDirectly(prompt: string, taskId: string, workDirecto
             }
           })
         }
+      } else if (result.hasFailed) {
+        console.error(`❌ Task ${taskId} failed: Task reported failure with ###TASK_FAILED###`)
+        responseLog.push(`❌ Task failed: ${task.title}`)
+        responseLog.push(`💬 Claude reported task failure`)
+        if (result.output && result.output.trim()) {
+          responseLog.push(`📝 Claude 응답:`)
+          const responseLines = result.output.trim().split('\n')
+          responseLines.forEach((line) => {
+            if (line.trim()) {
+              const truncatedLine = line.length > 120 ? line.substring(0, 120) + '...' : line
+              responseLog.push(`   ${truncatedLine}`)
+            }
+          })
+        }
       } else {
         console.error(`❌ Task ${taskId} failed:`, result.error)
         responseLog.push(`❌ Task failed: ${task.title}`)
         responseLog.push(`💬 Error: ${result.error}`)
-        throw new Error(`Claude execution failed: ${result.error}`)
+        if (result.output && result.output.trim()) {
+          responseLog.push(`📝 Claude 응답:`)
+          const responseLines = result.output.trim().split('\n')
+          responseLines.forEach((line) => {
+            if (line.trim()) {
+              const truncatedLine = line.length > 120 ? line.substring(0, 120) + '...' : line
+              responseLog.push(`   ${truncatedLine}`)
+            }
+          })
+        }
       }
       
       updateJob(jobId, {
         logs: [...(updatedJob.logs || []), ...responseLog]
       })
-    }
-    
-    if (!result.success) {
-      throw new Error(`Claude execution failed: ${result.error}`)
+      
+      // Throw errors after logging so user can see the details
+      if (result.hasFailed) {
+        throw new Error(`Task failed: Claude reported ###TASK_FAILED###`)
+      }
+      if (!result.success) {
+        throw new Error(`Claude execution failed: ${result.error}`)
+      }
     }
     
   } catch (error) {

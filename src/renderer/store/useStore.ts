@@ -385,16 +385,8 @@ async function executeTask(
     }
 
     // Execute Claude directly instead of using terminal
-    await executeClaudeDirectly(prompt, task.id, workDirectory, validation.claudePath!)
+    await executeClaudeDirectly(prompt, task.id, workDirectory, validation.claudePath!, jobId, task)
     console.log(`✅ Claude execution completed for task ${task.id}`)
-
-    // Log task completion
-    const updatedJob = useStore.getState().jobs.find(j => j.id === jobId)
-    if (updatedJob) {
-      updateJob(jobId, {
-        logs: [...(updatedJob.logs || []), `✅ Task sent to Claude: ${task.title}`]
-      })
-    }
 
   } catch (error: unknown) {
     console.error(`❌ executeTask failed for ${task.id}:`, error)
@@ -404,7 +396,7 @@ async function executeTask(
 }
 
 // Execute Claude directly without terminal
-async function executeClaudeDirectly(prompt: string, taskId: string, workDirectory: string, claudePath: string) {
+async function executeClaudeDirectly(prompt: string, taskId: string, workDirectory: string, claudePath: string, jobId: string, task: any) {
   console.log(`🎯 executeClaudeDirectly called for ${taskId}`)
   const { updateJob } = useStore.getState()
   
@@ -420,10 +412,41 @@ async function executeClaudeDirectly(prompt: string, taskId: string, workDirecto
     
     console.log(`📤 Claude execution result:`, result)
     
-    if (result.success) {
-      console.log(`✅ Task ${taskId} completed successfully`)
-    } else {
-      console.error(`❌ Task ${taskId} failed:`, result.error)
+    // Log Claude's response to execution logs
+    const updatedJob = useStore.getState().jobs.find(j => j.id === jobId)
+    if (updatedJob) {
+      const responseLog = []
+      
+      if (result.success) {
+        console.log(`✅ Task ${taskId} completed successfully`)
+        responseLog.push(`✅ Task completed: ${task.title}`)
+        
+        // Add Claude's response if it exists and is not empty
+        if (result.output && result.output.trim()) {
+          responseLog.push(`📝 Claude 응답:`)
+          // Split long responses into multiple log entries for better readability
+          const responseLines = result.output.trim().split('\n')
+          responseLines.forEach((line) => {
+            if (line.trim()) {
+              // Limit line length for better readability in logs
+              const truncatedLine = line.length > 120 ? line.substring(0, 120) + '...' : line
+              responseLog.push(`   ${truncatedLine}`)
+            }
+          })
+        }
+      } else {
+        console.error(`❌ Task ${taskId} failed:`, result.error)
+        responseLog.push(`❌ Task failed: ${task.title}`)
+        responseLog.push(`💬 Error: ${result.error}`)
+        throw new Error(`Claude execution failed: ${result.error}`)
+      }
+      
+      updateJob(jobId, {
+        logs: [...(updatedJob.logs || []), ...responseLog]
+      })
+    }
+    
+    if (!result.success) {
       throw new Error(`Claude execution failed: ${result.error}`)
     }
     

@@ -351,8 +351,21 @@ async function executeTask(
     const validation = await window.electronAPI.validateClaudeEnvironment()
     
     if (!validation.isValid) {
-      const errorMsg = `Claude CLI validation failed: ${validation.errors.join('; ')}`
+      const errorMsg = `Claude CLI 실행 불가: ${validation.errors.join('; ')}`
       console.error(errorMsg)
+      
+      // Add detailed error to job logs
+      const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
+      if (currentJob) {
+        updateJob(jobId, {
+          logs: [...(currentJob.logs || []), 
+            `❌ ${errorMsg}`,
+            `💡 해결방법: Claude Code가 올바르게 설치되어 있는지 확인하세요`,
+            `📍 터미널에서 'claude --version' 명령어를 실행해보세요`
+          ]
+        })
+      }
+      
       throw new Error(errorMsg)
     }
     
@@ -396,25 +409,16 @@ async function executeClaudeDirectly(prompt: string, taskId: string, workDirecto
   const { updateJob } = useStore.getState()
   
   try {
-    // Create prompt file
-    const promptFile = `/tmp/claude-prompt-${taskId}-${Date.now()}.txt`
-    await window.electronAPI.writeFile(promptFile, prompt)
-    
-    // Execute Claude using Node.js child_process via electron
+    // Execute Claude with prompt as argument
     const result = await window.electronAPI.executeClaudeCommand({
       claudePath,
-      args: ['-f', promptFile, '--dangerously-skip-permissions'],
+      args: ['-p', prompt],
       workDirectory,
       timeout: 300000, // 5 minutes
-      env: {
-        CLAUDE_DISABLE_SHELL_SNAPSHOT: '1'
-      }
+      env: {}
     })
     
     console.log(`📤 Claude execution result:`, result)
-    
-    // Clean up prompt file
-    await window.electronAPI.deleteFile(promptFile)
     
     if (result.success) {
       console.log(`✅ Task ${taskId} completed successfully`)

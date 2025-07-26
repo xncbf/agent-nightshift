@@ -1,11 +1,11 @@
 /**
- * AI 프롬프트 관리 파일
- * OpenAI와 Claude API 서비스에서 공통으로 사용하는 프롬프트들을 관리합니다.
+ * AI Prompt Management File
+ * Manages prompts commonly used by OpenAI and Claude API services.
  */
 
 export class AIPrompts {
   /**
-   * 의존성 분석 규칙을 반환합니다.
+   * Returns dependency analysis rules.
    */
   static getDependencyAnalysisRules(): string {
     return `Dependency Analysis Rules:
@@ -20,11 +20,21 @@ IMPORTANT: Every task except the first ones should have at least one dependency.
   }
 
   /**
-   * 태스크 분석용 시스템 프롬프트를 반환합니다.
+   * Returns system prompt for task analysis.
    */
   static getTaskAnalysisSystemPrompt(): string {
     return `You are a task analyzer. Given multiple prompts, determine if they should be executed in parallel or sequentially.
 Analyze task dependencies carefully and return a structured execution plan.
+
+CRITICAL: 
+1. Look for dependency indicators like:
+   - "After tasks X-Y complete"
+   - "When X is done"
+   - "Following X"
+   - Task numbers referenced in the text (e.g., "after 1-2" means depends on task1 and task2)
+
+2. Extract the clean task by removing dependency conditions from the prompt text
+   - "After tasks 1-2 complete, open app" → prompt: "open app", dependencies: ["task1", "task2"]
 
 ${this.getDependencyAnalysisRules()}
 
@@ -34,7 +44,7 @@ Return JSON format:
   "tasks": [
     {
       "id": "task1",
-      "prompt": "original prompt",
+      "prompt": "clean prompt without dependency conditions",
       "dependencies": [] // array of task ids this depends on - MUST be thoughtfully determined
     }
   ]
@@ -42,17 +52,18 @@ Return JSON format:
   }
 
   /**
-   * 태스크 추출용 시스템 프롬프트를 반환합니다.
+   * Returns system prompt for task extraction.
    */
   static getTaskExtractionSystemPrompt(): string {
-    return 'You are a task extraction assistant. Extract individual tasks from text.';
+    return `You are a task extraction assistant. Extract individual tasks from text while preserving their original format.
+DO NOT remove dependency conditions at this stage - they will be processed later for dependency analysis.`;
   }
 
   /**
-   * 태스크 추출용 사용자 프롬프트를 생성합니다.
+   * Generates user prompt for task extraction.
    */
   static getTaskExtractionUserPrompt(content: string): string {
-    return `Extract individual tasks/prompts from the following text. 
+    return `Extract individual tasks from the following text. 
 The text might be:
 - A single task
 - Multiple tasks separated by newlines
@@ -60,7 +71,8 @@ The text might be:
 - A bullet list (-, *, •)
 - Mixed format
 
-Extract each distinct task as a separate item. Clean up formatting but preserve the intent.
+IMPORTANT: Keep the tasks exactly as written, including any dependency conditions.
+These will be analyzed separately for dependencies.
 
 Text:
 ${content}
@@ -70,14 +82,14 @@ Return a JSON array of extracted prompts:
   }
 
   /**
-   * 태스크 분석용 사용자 프롬프트를 생성합니다.
+   * Generates user prompt for task analysis.
    */
   static getTaskAnalysisUserPrompt(prompts: string[]): string {
     return `Analyze these prompts:\n${prompts.map((p, i) => `${i + 1}. ${p}`).join('\n')}`;
   }
 
   /**
-   * 플랜 생성용 시스템 프롬프트를 반환합니다.
+   * Returns system prompt for plan generation.
    */
   static getPlanGenerationSystemPrompt(): string {
     return `You are a development task planner. Create a concise execution plan with proper task dependencies.
@@ -100,7 +112,7 @@ Return JSON format:
   }
 
   /**
-   * 태스크 완료용 시스템 프롬프트를 반환합니다.
+   * Returns system prompt for task completion.
    */
   static getTaskCompletionSystemPrompt(): string {
     return `You are a helpful AI assistant that executes development tasks. 

@@ -138,7 +138,7 @@ graph LR
 ## 📋 Requirements
 
 - 🍎 **macOS** (Optimized for Apple Silicon)
-- 📦 **Node.js 18+**
+- 🤖 **Claude Max** subscription
 - 🔑 **API Keys:**
   - Claude API key
   - OpenAI API key

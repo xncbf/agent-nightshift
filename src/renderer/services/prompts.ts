@@ -36,6 +36,11 @@ CRITICAL:
 2. Extract the clean task by removing dependency conditions from the prompt text
    - "After tasks 1-2 complete, open app" → prompt: "open app", dependencies: ["task1", "task2"]
 
+3. LOOP DETECTION - Identify tasks that should repeat:
+   - Look for: "until success", "retry", "repeat", "fix errors", "통과할 때까지", "재시도"
+   - Example: "run tests" → "fix errors" → suggests a loop
+   - Mark potential loops in the response
+
 ${this.getDependencyAnalysisRules()}
 
 Return JSON format:
@@ -46,6 +51,14 @@ Return JSON format:
       "id": "task1",
       "prompt": "clean prompt without dependency conditions",
       "dependencies": [] // array of task ids this depends on - MUST be thoughtfully determined
+    }
+  ],
+  "loops": [ // Optional: detected loop patterns
+    {
+      "startTaskId": "task2",
+      "endTaskId": "task3",
+      "pattern": "test-fix cycle",
+      "confidence": "high" | "medium" | "low"
     }
   ]
 }`;

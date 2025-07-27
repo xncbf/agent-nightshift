@@ -9,6 +9,9 @@ interface TaskNodeData {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
   type: 'task' | 'start' | 'end' | 'decision'
   duration?: number
+  isInLoop?: boolean
+  isLoopStart?: boolean
+  isLoopEnd?: boolean
   onClick: () => void
 }
 
@@ -60,31 +63,37 @@ export const TaskNode: React.FC<TaskNodeProps> = ({ data }) => {
       boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
     }
 
+    // If node is in a loop, add special styling
+    if (data.isInLoop) {
+      baseStyle.backgroundColor = 'rgba(59, 130, 246, 0.1)' // Blue tint
+      baseStyle.boxShadow = '0 0 15px rgba(59, 130, 246, 0.3)'
+    }
+
     if (data.status === 'running') {
       return {
         ...baseStyle,
         borderColor: 'var(--color-nightshift-warning)',
-        boxShadow: '0 0 20px rgba(245, 158, 11, 0.3)',
-        backgroundColor: 'var(--color-nightshift-light)',
+        boxShadow: data.isInLoop ? '0 0 20px rgba(245, 158, 11, 0.3), 0 0 15px rgba(59, 130, 246, 0.3)' : '0 0 20px rgba(245, 158, 11, 0.3)',
+        backgroundColor: data.isInLoop ? 'rgba(59, 130, 246, 0.2)' : 'var(--color-nightshift-light)',
       }
     } else if (data.status === 'completed') {
       return {
         ...baseStyle,
         borderColor: 'var(--color-nightshift-success)',
-        boxShadow: '0 0 10px rgba(34, 197, 94, 0.2)',
+        boxShadow: data.isInLoop ? '0 0 10px rgba(34, 197, 94, 0.2), 0 0 15px rgba(59, 130, 246, 0.3)' : '0 0 10px rgba(34, 197, 94, 0.2)',
       }
     } else if (data.status === 'failed') {
       return {
         ...baseStyle,
         borderColor: 'var(--color-nightshift-error)',
-        boxShadow: '0 0 10px rgba(239, 68, 68, 0.2)',
+        boxShadow: data.isInLoop ? '0 0 10px rgba(239, 68, 68, 0.2), 0 0 15px rgba(59, 130, 246, 0.3)' : '0 0 10px rgba(239, 68, 68, 0.2)',
       }
     }
 
     return {
       ...baseStyle,
-      borderColor: '#6b7280',
-      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
+      borderColor: data.isInLoop ? '#3b82f6' : '#6b7280',
+      boxShadow: data.isInLoop ? '0 4px 8px rgba(0, 0, 0, 0.3), 0 0 15px rgba(59, 130, 246, 0.3)' : '0 4px 8px rgba(0, 0, 0, 0.3)',
     }
   }
 
@@ -118,6 +127,18 @@ export const TaskNode: React.FC<TaskNodeProps> = ({ data }) => {
         <div className="flex items-center gap-2 mb-2">
           {getStatusIcon()}
           <span className="font-medium text-sm">{data.title}</span>
+          {data.isInLoop && (
+            <span 
+              className="text-xs px-2 py-0.5 rounded-full"
+              style={{ 
+                backgroundColor: 'rgba(59, 130, 246, 0.3)',
+                color: '#93c5fd',
+                border: '1px solid #3b82f6'
+              }}
+            >
+              {data.isLoopStart ? '🔄 Start' : data.isLoopEnd ? '🔄 End' : '🔄'}
+            </span>
+          )}
         </div>
         
         <div className="text-xs text-gray-400 mb-2">

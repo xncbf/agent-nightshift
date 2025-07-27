@@ -82,7 +82,7 @@ export const PromptsEditor: React.FC = () => {
             setCurrentPRD(e.target.value)
           }}
           onKeyDown={handleKeyDown}
-          placeholder="Enter your prompts here...\n\nExamples:\n• Create a React component for user authentication\n• Set up a REST API with Express\n• Add unit tests for all components\n\nOr just paste a numbered list:\n1. Build a landing page\n2. Add contact form\n3. Deploy to Vercel"
+          placeholder="Enter your prompts here...&#10;&#10;Examples:&#10;• Create a React component for user authentication&#10;• Set up a REST API with Express&#10;• Add unit tests for all components&#10;&#10;Or just paste a numbered list:&#10;1. Build a landing page&#10;2. Add contact form&#10;3. Deploy to Vercel"
           disabled={isSubmitting}
           className="w-full h-full p-4 rounded-lg resize-none transition-all duration-200 font-mono text-sm"
           style={{
@@ -120,7 +120,7 @@ export const PromptsEditor: React.FC = () => {
         </button>
       </div>
       <div className="text-sm text-gray-500 text-center mt-2">
-        Press {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter for AI plan • Manual plan lets you create and edit tasks yourself
+        Press {navigator.userAgent.includes('Mac') ? '⌘' : 'Ctrl'}+Enter for AI plan • Manual plan lets you create and edit tasks yourself
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { WorkflowPlan } from '../types/workflow'
+import { WorkflowPlan, TaskNode, LoopConfig } from '../types/workflow'
 
 interface Job {
   id: string
@@ -66,6 +66,75 @@ const executionControllers = new Map<string, { shouldStop: boolean, shouldPause:
 // Terminal functionality removed - using direct Claude execution
 
 // Terminal functions removed - using direct Claude execution
+
+// Helper functions for loop management
+function getTasksInLoop(workflowPlan: WorkflowPlan, loop: LoopConfig): TaskNode[] {
+  const tasks: TaskNode[] = []
+  let currentId = loop.startTaskId
+  
+  while (currentId) {
+    const task = workflowPlan.nodes.find(n => n.id === currentId)
+    if (!task) break
+    
+    tasks.push(task)
+    
+    if (currentId === loop.endTaskId) break
+    
+    // Find next task in the chain
+    const edge = workflowPlan.edges.find(e => e.source === currentId)
+    currentId = edge?.target || ''
+  }
+  
+  return tasks
+}
+
+function shouldRetryLoop(loop: LoopConfig): boolean {
+  const currentAttempt = loop.currentAttempt || 0
+  
+  switch (loop.condition) {
+    case 'until-success':
+      return true // Always retry until success
+    case 'max-attempts':
+      return currentAttempt < (loop.maxAttempts || 3)
+    case 'time-limit':
+      // TODO: Implement time limit checking
+      return true
+    default:
+      return false
+  }
+}
+
+function updateLoopInWorkflow(jobId: string, updatedLoop: LoopConfig) {
+  const { updateJob } = useStore.getState()
+  const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
+  
+  if (!currentJob?.workflowPlan) return
+  
+  const updatedLoops = (currentJob.workflowPlan.loops || []).map((loop: LoopConfig) =>
+    loop.id === updatedLoop.id ? updatedLoop : loop
+  )
+  
+  updateJob(jobId, {
+    workflowPlan: {
+      ...currentJob.workflowPlan,
+      loops: updatedLoops
+    }
+  })
+}
+
+function resetLoopTasks(jobId: string, loop: LoopConfig) {
+  const currentJob = useStore.getState().jobs.find(j => j.id === jobId)
+  if (!currentJob?.workflowPlan) return
+  
+  const loopTasks = getTasksInLoop(currentJob.workflowPlan, loop)
+  
+  for (const task of loopTasks) {
+    // Reset task to pending, but skip the start task if it already succeeded
+    if (task.id !== loop.startTaskId || task.status !== 'completed') {
+      updateTaskStatus(jobId, task.id, 'pending')
+    }
+  }
+}
 
 // Safe task status updater to prevent workflow plan corruption
 function updateTaskStatus(jobId: string, taskId: string, status: string, additionalUpdates?: { 
@@ -285,15 +354,54 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
               logs: [`✅ Task completed: ${task.title}`]
             })
           })
-          .catch((error) => {
-            // Mark as failed
-            runningTasks.delete(task.id)
-            console.error(`❌ Task ${task.id} failed:`, error)
+          .catch(async (error) => {
+            // Check if this task is part of a loop
+            const currentJobState = useStore.getState().jobs.find(j => j.id === jobId)
+            const workflowPlan = currentJobState?.workflowPlan
+            const loops = workflowPlan?.loops || []
             
-            // Update task status to failed (with safe update)
-            updateTaskStatus(jobId, task.id, 'failed', {
-              logs: [`❌ Task failed: ${task.title} - ${error instanceof Error ? error.message : String(error)}`]
+            // Find if this task is in a loop
+            const taskLoop = loops.find((loop: LoopConfig) => {
+              const loopTasks = getTasksInLoop(workflowPlan!, loop)
+              return loopTasks.some(t => t.id === task.id)
             })
+            
+            if (taskLoop && shouldRetryLoop(taskLoop)) {
+              // Update loop attempt counter
+              const updatedLoop = { ...taskLoop, currentAttempt: (taskLoop.currentAttempt || 0) + 1 }
+              updateLoopInWorkflow(jobId, updatedLoop)
+              
+              console.log(`🔄 Task ${task.id} failed in loop ${taskLoop.id}, attempt ${updatedLoop.currentAttempt}/${taskLoop.maxAttempts || '∞'}`)
+              
+              // Reset tasks in loop to pending
+              resetLoopTasks(jobId, taskLoop)
+              
+              // Remove from running/completed sets to allow retry
+              runningTasks.delete(task.id)
+              
+              // Update task status to pending for retry
+              updateTaskStatus(jobId, task.id, 'pending', {
+                logs: [`🔄 Retrying task in loop (attempt ${updatedLoop.currentAttempt})...`]
+              })
+            } else {
+              // Normal failure handling
+              runningTasks.delete(task.id)
+              console.error(`❌ Task ${task.id} failed:`, error)
+              
+              // Update task status to failed (with safe update)
+              updateTaskStatus(jobId, task.id, 'failed', {
+                logs: [`❌ Task failed: ${task.title} - ${error instanceof Error ? error.message : String(error)}`]
+              })
+              
+              // Check if loop should stop on failure
+              if (taskLoop && taskLoop.onFailure === 'stop') {
+                console.log(`🛑 Stopping execution due to loop failure policy`)
+                const controller = executionControllers.get(jobId)
+                if (controller) {
+                  controller.shouldStop = true
+                }
+              }
+            }
           })
       }, delay)
     })
@@ -641,6 +749,27 @@ export const useStore = create<AppState>((set, get) => {
           try {
             // AI will automatically detect if it's single or multiple prompts
             const workflowPlan = await workflowAI.analyzeContentAndGenerateWorkflow(prd)
+            
+            // Import LoopDetector
+            const { LoopDetector } = await import('../services/loopDetector')
+            
+            // Detect loops in the generated tasks
+            const taskNodes = workflowPlan.nodes.filter((n: any) => n.type === 'task')
+            const detectedLoops = LoopDetector.detectLoops(taskNodes)
+            
+            // Keep any existing loops from the workflow plan (manually created ones)
+            const existingLoops = workflowPlan.loops || []
+            
+            // Filter out detected loops that overlap with existing loops
+            const newLoops = detectedLoops.filter(detectedLoop => {
+              return !existingLoops.some(existingLoop => 
+                (existingLoop.startTaskId === detectedLoop.startTaskId && 
+                 existingLoop.endTaskId === detectedLoop.endTaskId)
+              )
+            })
+            
+            // Combine existing loops with new non-overlapping detected loops
+            workflowPlan.loops = [...existingLoops, ...newLoops]
             
             set(state => {
               const updatedJobs = state.jobs.map(job => 

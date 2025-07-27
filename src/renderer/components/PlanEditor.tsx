@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { TaskNode, WorkflowPlan } from '../types/workflow'
-import { Trash2, Save, X, Plus } from 'lucide-react'
+import { TaskNode, WorkflowPlan, LoopConfig } from '../types/workflow'
+import { Trash2, Save, X, Plus, RotateCw, Settings } from 'lucide-react'
 
 interface PlanEditorProps {
   workflowPlan: WorkflowPlan
@@ -14,6 +14,15 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
     description: string
     dependencies: string[]
   }>({ title: '', description: '', dependencies: [] })
+  const [showLoopsSection, setShowLoopsSection] = useState(false)
+  const [editingLoopId, setEditingLoopId] = useState<string | null>(null)
+  const [creatingLoop, setCreatingLoop] = useState(false)
+  const [newLoop, setNewLoop] = useState<Partial<LoopConfig>>({
+    startTaskId: '',
+    endTaskId: '',
+    maxAttempts: 3,
+    condition: 'until-success'
+  })
 
   const handleEditStart = (node: TaskNode) => {
     console.log('Editing node:', {
@@ -127,13 +136,33 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
     const endNodeIndex = workflowPlan.nodes.findIndex(n => n.type === 'end')
     const lastTaskNode = taskNodes[taskNodes.length - 1]
     
+    // Calculate position based on last task or start node
+    let newPosition = { x: 100, y: 100 }
+    if (lastTaskNode) {
+      const lastTaskNodeFull = workflowPlan.nodes.find(n => n.id === lastTaskNode.id)
+      if (lastTaskNodeFull?.position) {
+        newPosition = { 
+          x: lastTaskNodeFull.position.x + 250, 
+          y: lastTaskNodeFull.position.y 
+        }
+      }
+    } else {
+      const startNode = workflowPlan.nodes.find(n => n.type === 'start')
+      if (startNode?.position) {
+        newPosition = { 
+          x: startNode.position.x + 250, 
+          y: startNode.position.y 
+        }
+      }
+    }
+    
     const newTask: TaskNode = {
       id: newTaskId,
       title: `Task ${newTaskNumber}`,
       description: `New task ${newTaskNumber} - click to edit`,
       type: 'task',
       status: 'pending',
-      position: { x: 100, y: 250 + (newTaskNumber - 1) * 150 },
+      position: newPosition,
       duration: 10,
       dependencies: lastTaskNode ? [lastTaskNode.id] : ['start']
     }
@@ -211,23 +240,93 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
     )
   }
 
+  const handleDeleteLoop = (loopId: string) => {
+    const updatedLoops = (workflowPlan.loops || []).filter(loop => loop.id !== loopId)
+    onPlanUpdate({
+      ...workflowPlan,
+      loops: updatedLoops
+    })
+  }
+
+  const handleUpdateLoop = (loopId: string, updates: Partial<LoopConfig>) => {
+    const updatedLoops = (workflowPlan.loops || []).map(loop =>
+      loop.id === loopId ? { ...loop, ...updates } : loop
+    )
+    onPlanUpdate({
+      ...workflowPlan,
+      loops: updatedLoops
+    })
+  }
+
+  const getTaskTitle = (taskId: string) => {
+    const task = workflowPlan.nodes.find(n => n.id === taskId)
+    const taskIndex = workflowPlan.nodes.filter(n => n.type === 'task').findIndex(n => n.id === taskId)
+    return task ? `#${taskIndex + 2} ${task.title}` : taskId
+  }
+
+  const handleCreateLoop = () => {
+    if (!newLoop.startTaskId || !newLoop.endTaskId) return
+    
+    const loopId = `loop-${newLoop.startTaskId}-${newLoop.endTaskId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const createdLoop: LoopConfig = {
+      id: loopId,
+      startTaskId: newLoop.startTaskId!,
+      endTaskId: newLoop.endTaskId!,
+      condition: newLoop.condition as 'until-success' | 'max-attempts',
+      maxAttempts: newLoop.maxAttempts,
+      onFailure: 'continue',
+      currentAttempt: 0  // Mark as accepted/active immediately
+    }
+    
+    onPlanUpdate({
+      ...workflowPlan,
+      loops: [...(workflowPlan.loops || []), createdLoop]
+    })
+    
+    // Reset form
+    setCreatingLoop(false)
+    setNewLoop({
+      startTaskId: '',
+      endTaskId: '',
+      maxAttempts: 3,
+      condition: 'until-success'
+    })
+  }
+
   return (
     <div className="h-full flex flex-col">
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-lg font-semibold">Task Plan</h3>
-          <button
-            onClick={handleAddTask}
-            className="flex items-center gap-2 px-3 py-1 rounded-md text-sm transition-colors"
-            style={{
-              backgroundColor: 'var(--color-nightshift-accent)',
-              color: 'white'
-            }}
-            title="Add new task"
-          >
-            <Plus className="w-4 h-4" />
-            Add Task
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowLoopsSection(!showLoopsSection)}
+              className={`flex items-center gap-2 px-3 py-1 rounded-md text-sm transition-colors ${
+                showLoopsSection ? 'bg-blue-600' : ''
+              }`}
+              style={{
+                backgroundColor: showLoopsSection ? 'var(--color-nightshift-accent)' : 'var(--color-nightshift-darker)',
+                color: 'white',
+                border: '1px solid var(--color-nightshift-accent)'
+              }}
+              title="Manage loops"
+            >
+              <RotateCw className="w-4 h-4" />
+              Loops ({(workflowPlan.loops || []).length})
+            </button>
+            <button
+              onClick={handleAddTask}
+              className="flex items-center gap-2 px-3 py-1 rounded-md text-sm transition-colors"
+              style={{
+                backgroundColor: 'var(--color-nightshift-accent)',
+                color: 'white'
+              }}
+              title="Add new task"
+            >
+              <Plus className="w-4 h-4" />
+              Add Task
+            </button>
+          </div>
         </div>
         <div className="text-sm text-gray-400 mb-2">
           {workflowPlan.nodes.filter(n => n.type === 'task').length} tasks • Est. {workflowPlan.estimatedDuration} minutes
@@ -235,6 +334,198 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({ workflowPlan, onPlanUpda
       </div>
 
       <div className="flex-1 overflow-auto space-y-2 pr-4">
+        {/* Loops Section */}
+        {showLoopsSection && (
+          <div className="mb-4 p-4 rounded-lg" style={{ backgroundColor: 'var(--color-nightshift-darker)', border: '2px solid var(--color-nightshift-accent)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-medium flex items-center gap-2">
+                <RotateCw className="w-4 h-4" />
+                Loop Management
+              </h4>
+              <button
+                onClick={() => setCreatingLoop(!creatingLoop)}
+                className="text-xs px-2 py-1 rounded flex items-center gap-1"
+                style={{
+                  backgroundColor: creatingLoop ? 'var(--color-nightshift-error)' : 'var(--color-nightshift-accent)',
+                  color: 'white'
+                }}
+              >
+                {creatingLoop ? <X className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                {creatingLoop ? 'Cancel' : 'Add Loop'}
+              </button>
+            </div>
+            
+            {creatingLoop && (
+              <div className="mb-4 p-3 rounded-md" style={{ backgroundColor: 'var(--color-nightshift-light)', border: '1px solid var(--color-nightshift-accent)' }}>
+                <h5 className="text-sm font-medium mb-2">Create New Loop</h5>
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-xs text-gray-400">Start Task:</label>
+                    <select
+                      value={newLoop.startTaskId}
+                      onChange={(e) => setNewLoop({ ...newLoop, startTaskId: e.target.value })}
+                      className="w-full px-2 py-1 rounded text-sm"
+                      style={{ backgroundColor: 'var(--color-nightshift-darker)', border: '1px solid var(--color-nightshift-accent)' }}
+                    >
+                      <option value="">Select start task...</option>
+                      {workflowPlan.nodes.filter(n => n.type === 'task').map((task, index) => (
+                        <option key={task.id} value={task.id}>
+                          #{index + 2} {task.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-gray-400">End Task:</label>
+                    <select
+                      value={newLoop.endTaskId}
+                      onChange={(e) => setNewLoop({ ...newLoop, endTaskId: e.target.value })}
+                      className="w-full px-2 py-1 rounded text-sm"
+                      style={{ backgroundColor: 'var(--color-nightshift-darker)', border: '1px solid var(--color-nightshift-accent)' }}
+                      disabled={!newLoop.startTaskId}
+                    >
+                      <option value="">Select end task...</option>
+                      {workflowPlan.nodes.filter(n => {
+                        if (n.type !== 'task') return false
+                        if (!newLoop.startTaskId) return false
+                        // End task must be after start task
+                        const taskNodes = workflowPlan.nodes.filter(node => node.type === 'task')
+                        const startIndex = taskNodes.findIndex(t => t.id === newLoop.startTaskId)
+                        const currentIndex = taskNodes.findIndex(t => t.id === n.id)
+                        return currentIndex > startIndex
+                      }).map((task) => {
+                        const taskIndex = workflowPlan.nodes.filter(n => n.type === 'task').findIndex(n => n.id === task.id)
+                        return (
+                          <option key={task.id} value={task.id}>
+                            #{taskIndex + 2} {task.title}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-gray-400">Condition:</label>
+                    <select
+                      value={newLoop.condition}
+                      onChange={(e) => setNewLoop({ ...newLoop, condition: e.target.value as 'until-success' | 'max-attempts' })}
+                      className="w-full px-2 py-1 rounded text-sm"
+                      style={{ backgroundColor: 'var(--color-nightshift-darker)', border: '1px solid var(--color-nightshift-accent)' }}
+                    >
+                      <option value="until-success">Until Success</option>
+                      <option value="max-attempts">Max Attempts</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-gray-400">Max Attempts:</label>
+                    <input
+                      type="number"
+                      value={newLoop.maxAttempts}
+                      onChange={(e) => setNewLoop({ ...newLoop, maxAttempts: parseInt(e.target.value) || 3 })}
+                      className="w-full px-2 py-1 rounded text-sm"
+                      style={{ backgroundColor: 'var(--color-nightshift-darker)', border: '1px solid var(--color-nightshift-accent)' }}
+                      min="1"
+                      max="10"
+                    />
+                  </div>
+                  
+                  <button
+                    onClick={handleCreateLoop}
+                    disabled={!newLoop.startTaskId || !newLoop.endTaskId}
+                    className="w-full px-3 py-1 rounded text-sm"
+                    style={{
+                      backgroundColor: (!newLoop.startTaskId || !newLoop.endTaskId) ? '#4b5563' : 'var(--color-nightshift-success)',
+                      color: 'white',
+                      cursor: (!newLoop.startTaskId || !newLoop.endTaskId) ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    Create Loop
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {(workflowPlan.loops || []).length === 0 && !creatingLoop ? (
+              <p className="text-sm text-gray-400">No loops configured yet. Click "Add Loop" to create one.</p>
+            ) : (workflowPlan.loops || []).length > 0 && (
+              <div className="space-y-2">
+                {(workflowPlan.loops || []).map(loop => (
+                  <div 
+                    key={loop.id} 
+                    className="p-3 rounded-md" 
+                    style={{ backgroundColor: 'var(--color-nightshift-light)', border: '1px solid #3b82f6' }}
+                  >
+                    {editingLoopId === loop.id ? (
+                      // Edit mode
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm font-medium">Max Attempts:</label>
+                          <input
+                            type="number"
+                            value={loop.maxAttempts || 3}
+                            onChange={(e) => handleUpdateLoop(loop.id, { maxAttempts: parseInt(e.target.value) || 3 })}
+                            className="w-20 px-2 py-1 rounded text-sm"
+                            style={{ backgroundColor: 'var(--color-nightshift-darker)', border: '1px solid var(--color-nightshift-accent)' }}
+                            min="1"
+                            max="10"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm font-medium">Current Attempt:</label>
+                          <span className="text-sm">{loop.currentAttempt || 0}</span>
+                        </div>
+                        <button
+                          onClick={() => setEditingLoopId(null)}
+                          className="btn-success text-xs px-2 py-1"
+                        >
+                          Done
+                        </button>
+                      </div>
+                    ) : (
+                      // Display mode
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-600/20 text-blue-400">
+                              🔄 Loop
+                            </span>
+                            <span className="text-sm">
+                              {getTaskTitle(loop.startTaskId)} → {getTaskTitle(loop.endTaskId)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setEditingLoopId(loop.id)}
+                              className="p-1 rounded hover:bg-gray-700"
+                              title="Edit loop"
+                            >
+                              <Settings className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteLoop(loop.id)}
+                              className="p-1 rounded hover:bg-red-500/20 text-red-400"
+                              title="Delete loop"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          Attempts: {loop.currentAttempt || 0}/{loop.maxAttempts || 3}
+                          {loop.condition && ` • Condition: ${loop.condition}`}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tasks Section */}
         {workflowPlan.nodes.map((node, index) => (
           <div
             key={node.id}

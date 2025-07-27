@@ -4,7 +4,7 @@ import { WorkflowDAG } from './WorkflowDAG'
 import { PlanEditor } from './PlanEditor'
 import { ProgressView } from './ProgressView'
 import { TaskNode, WorkflowPlan } from '../types/workflow'
-import { BarChart3, Network, CheckCircle, XCircle, Clock, List, Activity, Folder, Settings } from 'lucide-react'
+import { Network, CheckCircle, XCircle, Clock, List, Activity, Folder, Settings } from 'lucide-react'
 
 export const WorkflowStatus: React.FC = () => {
   const { jobs, activeJobId, approveWorkflowPlan, rejectWorkflowPlan, resumeJob, updateJob, workDirectory, setWorkDirectory } = useStore()
@@ -43,6 +43,7 @@ export const WorkflowStatus: React.FC = () => {
       updateJob(activeJob.id, { workflowPlan: updatedPlan })
     }
   }
+
 
   const handleApprove = () => {
     if (activeJob && activeJob.status === 'ready') {
@@ -310,6 +311,7 @@ export const WorkflowStatus: React.FC = () => {
               <WorkflowDAG 
                 nodes={activeJob.workflowPlan.nodes}
                 edges={activeJob.workflowPlan.edges}
+                loops={activeJob.workflowPlan.loops || []}
                 onNodeClick={handleNodeClick}
               />
             </div>

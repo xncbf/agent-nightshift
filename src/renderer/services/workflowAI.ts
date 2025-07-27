@@ -1,6 +1,7 @@
 import { openaiService } from './openaiService'
 import { claudeApiService } from './claudeApiService'
-import { TaskNode, WorkflowPlan } from '../types/workflow'
+import { TaskNode, WorkflowPlan, LoopConfig } from '../types/workflow'
+import { LoopDetector } from './loopDetector'
 
 export class WorkflowAI {
   private addLog: (log: string) => void
@@ -239,12 +240,52 @@ export class WorkflowAI {
       })
     }
     
+    // Detect loops from the analysis
+    const loops: LoopConfig[] = []
+    
+    // Check if AI detected any loops
+    if (analysis.loops && analysis.loops.length > 0) {
+      this.addLog(`🔄 Detected ${analysis.loops.length} potential loops`)
+      
+      for (const loopSuggestion of analysis.loops) {
+        const loop: LoopConfig = {
+          id: `loop-${loopSuggestion.startTaskId}-${loopSuggestion.endTaskId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          startTaskId: loopSuggestion.startTaskId,
+          endTaskId: loopSuggestion.endTaskId,
+          condition: loopSuggestion.pattern.includes('test') ? 'until-success' : 'max-attempts',
+          maxAttempts: 3,
+          onFailure: 'continue'
+        }
+        loops.push(loop)
+      }
+    }
+    
+    // Also run our own loop detector
+    const taskNodes = nodes.filter(n => n.type === 'task')
+    const detectedLoops = LoopDetector.detectLoops(taskNodes)
+    
+    // Merge with AI-detected loops (avoiding duplicates)
+    for (const detectedLoop of detectedLoops) {
+      const exists = loops.some(l => 
+        l.startTaskId === detectedLoop.startTaskId && 
+        l.endTaskId === detectedLoop.endTaskId
+      )
+      if (!exists) {
+        loops.push(detectedLoop)
+      }
+    }
+    
+    if (loops.length > 0) {
+      this.addLog(`🔄 Total loops configured: ${loops.length}`)
+    }
+
     return {
       id: `workflow-${Date.now()}`,
       name: `${analysis.executionType === 'parallel' ? 'Parallel' : 'Sequential'} Workflow`,
       description: 'Auto-generated workflow from prompts',
       nodes,
       edges,
+      loops: loops.length > 0 ? loops : undefined,
       status: 'draft',
       createdAt: new Date(),
       estimatedDuration: nodes.length * 5

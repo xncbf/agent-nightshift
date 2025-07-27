@@ -4,9 +4,12 @@ import { WorkflowStatus } from './components/WorkflowStatus'
 import { ExecutionLogs } from './components/ExecutionLogs'
 import { Footer } from './components/Footer'
 import { LayoutTransition } from './components/LayoutTransition'
+import { LoopNotification } from './components/LoopNotification'
+import { LoopConfigModal } from './components/LoopConfigModal'
 import { useStore } from './store/useStore'
 import { openaiService } from './services/openaiService'
 import { claudeApiService } from './services/claudeApiService'
+import type { LoopConfig } from './types/workflow'
 
 function App() {
   const { 
@@ -25,12 +28,78 @@ function App() {
     openaiModel,
     setOpenaiModel,
     claudeModel,
-    setClaudeModel
+    setClaudeModel,
+    jobs,
+    activeJobId
   } = useStore()
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
   const [tempApiKey, setTempApiKey] = useState('')
   const [showProviderDropdown, setShowProviderDropdown] = useState(false)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
+  const [pendingLoops, setPendingLoops] = useState<LoopConfig[]>([])
+  const [editingLoop, setEditingLoop] = useState<LoopConfig | null>(null)
+  
+  const activeJob = jobs.find(job => job.id === activeJobId)
+
+  // Initialize pending loops when workflow plan is loaded
+  useEffect(() => {
+    if (activeJob?.workflowPlan?.loops && activeJob.status === 'ready') {
+      // Filter out loops that have already been processed (have currentAttempt set)
+      const unprocessedLoops = activeJob.workflowPlan.loops.filter(loop => 
+        loop.currentAttempt === undefined || loop.currentAttempt === null
+      )
+      
+      // Also filter out loops that overlap with already accepted loops
+      const acceptedLoops = activeJob.workflowPlan.loops.filter(loop => 
+        loop.currentAttempt !== undefined && loop.currentAttempt !== null
+      )
+      
+      const nonOverlappingLoops = unprocessedLoops.filter(unprocessedLoop => {
+        // Check if this loop overlaps with any accepted loop
+        return !acceptedLoops.some(acceptedLoop => 
+          (acceptedLoop.startTaskId === unprocessedLoop.startTaskId && 
+           acceptedLoop.endTaskId === unprocessedLoop.endTaskId) ||
+          (acceptedLoop.startTaskId === unprocessedLoop.startTaskId) ||
+          (acceptedLoop.endTaskId === unprocessedLoop.endTaskId)
+        )
+      })
+      
+      setPendingLoops(nonOverlappingLoops)
+    } else {
+      setPendingLoops([])
+    }
+  }, [activeJob?.workflowPlan, activeJob?.status])
+
+  const handleLoopAccept = (loop: LoopConfig) => {
+    if (activeJob?.workflowPlan) {
+      const updatedPlan = {
+        ...activeJob.workflowPlan,
+        loops: [...(activeJob.workflowPlan.loops || []).filter(l => l.id !== loop.id), { ...loop, currentAttempt: 0 }]
+      }
+      updateJob(activeJob.id, { workflowPlan: updatedPlan })
+      setPendingLoops(pendingLoops.filter(l => l.id !== loop.id))
+    }
+  }
+
+  const handleLoopReject = (loopId: string) => {
+    if (activeJob?.workflowPlan) {
+      const updatedPlan = {
+        ...activeJob.workflowPlan,
+        loops: (activeJob.workflowPlan.loops || []).filter(l => l.id !== loopId)
+      }
+      updateJob(activeJob.id, { workflowPlan: updatedPlan })
+    }
+    setPendingLoops(pendingLoops.filter(l => l.id !== loopId))
+  }
+
+  const handleLoopModify = (loop: LoopConfig) => {
+    setEditingLoop(loop)
+  }
+
+  const handleLoopSave = (updatedLoop: LoopConfig) => {
+    handleLoopAccept(updatedLoop)
+    setEditingLoop(null)
+  }
 
   useEffect(() => {
     // Initialize OpenAI service with saved key and model
@@ -59,12 +128,12 @@ function App() {
 
   useEffect(() => {
     // Set up IPC listeners for job updates
-    const unsubscribeJobUpdate = window.electronAPI.onJobUpdate((event, data) => {
+    const unsubscribeJobUpdate = window.electronAPI.onJobUpdate((_event, data) => {
       console.log('Job update received:', data)
       updateJob(data.jobId, data.updates)
     })
 
-    const unsubscribeLogUpdate = window.electronAPI.onLogUpdate((event, data) => {
+    const unsubscribeLogUpdate = window.electronAPI.onLogUpdate((_event, data) => {
       console.log('Log update received:', data)
       updateJob(data.jobId, {
         logs: data.logs
@@ -429,6 +498,29 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Loop Notification - Shows in bottom right corner */}
+      {pendingLoops.length > 0 && activeJob?.workflowPlan && (
+        <LoopNotification
+          loops={pendingLoops}
+          tasks={activeJob.workflowPlan.nodes}
+          onAccept={handleLoopAccept}
+          onReject={handleLoopReject}
+          onModify={handleLoopModify}
+        />
+      )}
+
+      {/* Loop Configuration Modal */}
+      {editingLoop && activeJob?.workflowPlan && (
+        <LoopConfigModal
+          loop={editingLoop}
+          taskTitles={Object.fromEntries(
+            activeJob.workflowPlan.nodes.map(n => [n.id, n.title])
+          )}
+          onSave={handleLoopSave}
+          onCancel={() => setEditingLoop(null)}
+        />
       )}
     </div>
   )

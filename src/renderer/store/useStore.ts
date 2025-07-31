@@ -188,8 +188,8 @@ function updateTaskStatus(jobId: string, taskId: string, status: string, additio
 }
 
 // Workflow execution function
-async function executeWorkflowTasks(jobId: string, job: Job) {
-  console.log(`🎯 executeWorkflowTasks called for job ${jobId}`)
+async function executeWorkflowTasks(jobId: string, job: Job, isResume: boolean = false) {
+  console.log(`🎯 executeWorkflowTasks called for job ${jobId} (isResume: ${isResume})`)
   const { workflowPlan } = job
   if (!workflowPlan) {
     console.error(`❌ No workflow plan found for job ${jobId}`)
@@ -220,24 +220,47 @@ async function executeWorkflowTasks(jobId: string, job: Job) {
   // Get initial task nodes and sort by dependencies
   const initialTaskNodes = workflowPlan.nodes.filter((n: any) => n.type === 'task')
   
-  // Update all tasks to pending except start
-  const resetNodes = workflowPlan.nodes.map((node: any) => ({
-    ...node,
-    status: node.type === 'start' ? 'completed' : 'pending'
-  }))
-  
-  updateJob(jobId, {
-    workflowPlan: { ...workflowPlan, nodes: resetNodes }
-  })
-  
-  console.log(`🔄 Workflow reset completed. Total nodes: ${resetNodes.length}`)
-  console.log(`📋 Reset node types:`, resetNodes.map((n: any) => `${n.id}(${n.type})`).join(', '))
+  if (!isResume) {
+    // For new execution, reset all tasks to pending except start
+    const resetNodes = workflowPlan.nodes.map((node: any) => ({
+      ...node,
+      status: node.type === 'start' ? 'completed' : 'pending'
+    }))
+    
+    updateJob(jobId, {
+      workflowPlan: { ...workflowPlan, nodes: resetNodes }
+    })
+    
+    console.log(`🔄 Workflow reset completed. Total nodes: ${resetNodes.length}`)
+  } else {
+    // For resume from failed, don't reset completed tasks
+    // The workflowPlan already has the correct statuses from resumeJob function
+    console.log(`📊 Resume mode - keeping existing workflow state`)
+    console.log(`📊 Status: ${workflowPlan.nodes.filter((n: any) => n.status === 'completed').length} completed, ${workflowPlan.nodes.filter((n: any) => n.status === 'pending').length} pending, ${workflowPlan.nodes.filter((n: any) => n.status === 'failed').length} failed`)
+    
+    updateJob(jobId, {
+      workflowPlan: workflowPlan
+    })
+  }
 
   // Execute tasks in dependency order
-  const completedTasks = new Set(['start'])
+  // Initialize completedTasks based on execution mode
+  const completedTasks = new Set(
+    isResume
+      ? workflowPlan.nodes
+          .filter((n: any) => n.status === 'completed')
+          .map((n: any) => n.id)
+      : ['start'] // For new execution, only start is completed
+  )
   const runningTasks = new Set()
 
-  while (completedTasks.size - 1 < initialTaskNodes.length) { // -1 for start node
+  // Count only task nodes that need to be completed (excluding already completed ones)
+  const tasksToComplete = initialTaskNodes.filter((n: any) => n.status !== 'completed').length
+  const initiallyCompletedTasks = initialTaskNodes.filter((n: any) => n.status === 'completed').length
+  
+  console.log(`📋 Tasks to complete: ${tasksToComplete}, Already completed: ${initiallyCompletedTasks}`)
+  
+  while (completedTasks.size < initialTaskNodes.length + 1) { // +1 for start node
     // Check execution controller first
     const controller = executionControllers.get(jobId)
     if (controller?.shouldStop || controller?.shouldPause) {
@@ -1015,7 +1038,7 @@ export const useStore = create<AppState>((set, get) => {
         // Execute the workflow tasks from the failed point
         try {
           console.log('🔄 Restarting workflow execution from failed point for job:', jobId)
-          await executeWorkflowTasks(jobId, { ...job, workflowPlan: updatedWorkflowPlan, status: 'running' })
+          await executeWorkflowTasks(jobId, { ...job, workflowPlan: updatedWorkflowPlan, status: 'running' }, true)
         } catch (error) {
           console.error('Failed to resume workflow execution:', error)
           const errorMessage = error instanceof Error ? error.message : String(error)

@@ -3,7 +3,7 @@ import { useStore } from '../store/useStore'
 import { Send, Plus, X, AlertCircle, Upload, ArrowRight, GitBranch, Layers, ChevronLeft } from 'lucide-react'
 
 export const PromptsEditor: React.FC = () => {
-  const { isSubmitting, setIsSubmitting, addJob, isAIConfigured, aiProvider, jobs, currentPRD, setCurrentPRD, createManualPlan } = useStore()
+  const { isSubmitting, setIsSubmitting, addJob, jobs, currentPRD, setCurrentPRD, createManualPlan } = useStore()
   const [content, setContent] = useState(currentPRD)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -13,12 +13,6 @@ export const PromptsEditor: React.FC = () => {
   
   const handleSubmit = async () => {
     if (!content.trim()) return
-    
-    if (!isAIConfigured) {
-      const providerName = aiProvider === 'openai' ? 'OpenAI API key' : 'Claude API key'
-      alert(`Please configure ${providerName} first!`)
-      return
-    }
     
     await addJob(content.trim())
     // Don't clear content so user can see what they submitted
@@ -115,16 +109,6 @@ export const PromptsEditor: React.FC = () => {
           Tasks will be arranged based on your structure markers (parallel by default).
         </p>
       </div>
-
-      {aiProvider === 'openai' && !isAIConfigured && (
-        <div className="mb-4 p-3 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'var(--color-nightshift-warning)', opacity: 0.8 }}>
-          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="font-medium">OpenAI API Key Required</p>
-            <p className="text-sm">Click the "Set API Key" button in the header to configure your OpenAI API key.</p>
-          </div>
-        </div>
-      )}
 
 
       {isPlanning && (
@@ -226,7 +210,7 @@ export const PromptsEditor: React.FC = () => {
       <div className="flex gap-2">
         <button
           onClick={handleSubmit}
-          disabled={isSubmitting || !isAIConfigured || !content.trim()}
+          disabled={isSubmitting || !content.trim()}
           className="flex-1 btn-primary flex items-center justify-center gap-2"
         >
           <Send className="w-5 h-5" />

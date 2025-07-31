@@ -189,7 +189,7 @@ function App() {
             focusedPanel === 'output' ? 'panel-maximized' :
             layoutMode === 'editing' ? 'panel-medium-small' :
             layoutMode === 'planning' ? 'panel-medium-small' :
-            'panel-medium'
+            'panel-small'
           }`}
           onClick={() => {
             // Always focus when clicking anywhere in the panel

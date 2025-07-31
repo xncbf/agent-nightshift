@@ -14,7 +14,18 @@ export const Footer: React.FC = () => {
   const [claudeStatus, setClaudeStatus] = useState<ClaudeStatus | null>(null)
   
   const runningJobs = jobs.filter(job => job.status === 'running').length
-  const completedJobs = jobs.filter(job => job.status === 'completed').length
+  
+  // Calculate task counts for active job
+  const getTaskCounts = () => {
+    if (!activeJob?.workflowPlan) return { completed: 0, total: 0 }
+    
+    const taskNodes = activeJob.workflowPlan.nodes.filter(n => n.type === 'task')
+    const completedTasks = taskNodes.filter(n => n.status === 'completed').length
+    
+    return { completed: completedTasks, total: taskNodes.length }
+  }
+  
+  const taskCounts = getTaskCounts()
   
   // Check Claude CLI status on mount
   useEffect(() => {
@@ -96,10 +107,10 @@ export const Footer: React.FC = () => {
           <span>{claudeStatusInfo.text}</span>
         </div>
         
-        {runningJobs > 0 && (
+        {activeJob && (activeJob.status === 'running' || activeJob.status === 'paused') && taskCounts.total > 0 && (
           <>
             <div className="w-px h-4" style={{ backgroundColor: 'var(--color-nightshift-light)' }} />
-            <span>Tasks: {completedJobs}/{jobs.length}</span>
+            <span>Tasks: {taskCounts.completed}/{taskCounts.total}</span>
           </>
         )}
         

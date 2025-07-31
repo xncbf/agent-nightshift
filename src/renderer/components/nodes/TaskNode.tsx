@@ -54,7 +54,8 @@ export const TaskNode: React.FC<TaskNodeProps> = ({ data }) => {
     const baseStyle = {
       backgroundColor: 'var(--color-nightshift-darker)',
       color: '#f3f4f6',
-      minWidth: '180px',
+      minWidth: '200px',
+      maxWidth: '300px',
       padding: '12px',
       borderRadius: '8px',
       border: '2px solid',
@@ -126,7 +127,6 @@ export const TaskNode: React.FC<TaskNodeProps> = ({ data }) => {
       >
         <div className="flex items-center gap-2 mb-2">
           {getStatusIcon()}
-          <span className="font-medium text-sm">{data.title}</span>
           {data.isInLoop && (
             <span 
               className="text-xs px-2 py-0.5 rounded-full"
@@ -141,7 +141,16 @@ export const TaskNode: React.FC<TaskNodeProps> = ({ data }) => {
           )}
         </div>
         
-        <div className="text-xs text-gray-400 mb-2">
+        <div 
+          className="text-sm text-gray-300"
+          style={{
+            overflow: 'hidden',
+            display: '-webkit-box',
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: 'vertical',
+            lineHeight: '1.4',
+          }}
+        >
           {data.description}
         </div>
         

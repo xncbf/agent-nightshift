@@ -1,79 +1,49 @@
-import { openaiService } from './openaiService'
-import { claudeApiService } from './claudeApiService'
-import { TaskNode, WorkflowPlan, LoopConfig } from '../types/workflow'
+import { TaskNode, WorkflowPlan } from '../types/workflow'
 import { LoopDetector } from './loopDetector'
 
 export class WorkflowAI {
   private addLog: (log: string) => void
-  private aiProvider: 'openai' | 'claude'
   
   constructor(
     addLog: (log: string) => void, 
-    aiProvider: 'openai' | 'claude' = 'openai',
-    openaiModel: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo' = 'gpt-4o-mini',
-    claudeModel: 'claude-sonnet-4-0' | 'claude-opus-4-0' = 'claude-sonnet-4-0'
+    aiProvider?: 'openai' | 'claude',
+    openaiModel?: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-3.5-turbo',
+    claudeModel?: 'claude-sonnet-4-0' | 'claude-opus-4-0'
   ) {
     this.addLog = addLog
-    this.aiProvider = aiProvider
-    
-    // Configure models based on provider
-    if (aiProvider === 'openai') {
-      openaiService.setModel(openaiModel)
-    } else if (aiProvider === 'claude') {
-      claudeApiService.setModel(claudeModel)
-    }
+    // AI parameters are kept for backward compatibility but not used
   }
   
   async analyzeContentAndGenerateWorkflow(content: string): Promise<WorkflowPlan> {
     try {
-      const providerName = this.aiProvider === 'openai' ? 'OpenAI' : 'Claude API'
-      this.addLog(`🤔 Analyzing content with ${providerName}...`)
+      this.addLog(`📋 Creating workflow plan...`)
       
-      // Use the appropriate service based on provider
-      const service = this.aiProvider === 'openai' ? openaiService : claudeApiService
-      const analysis = await service.extractAndAnalyzePrompts(content)
-      
-      if (analysis.tasks.length === 1) {
-        // Single task - generate detailed plan
-        this.addLog('📝 Creating detailed plan for single task...')
-        return await this.analyzePRDAndGenerateWorkflow(analysis.tasks[0].prompt)
-      } else {
-        // Multiple tasks - use the analyzed structure
-        this.addLog(`📊 Found ${analysis.tasks.length} tasks (${analysis.executionType} execution)`)
-        return await this.createWorkflowFromAnalysis(analysis)
-      }
+      // Always create DAG without AI
+      return this.createWorkflowFromContent(content)
     } catch (error) {
       this.addLog(`❌ Error: ${error instanceof Error ? error.message : String(error)}`)
       throw error
     }
   }
   
-  async analyzePRDAndGenerateWorkflow(prompt: string): Promise<WorkflowPlan> {
-    try {
-      const providerName = this.aiProvider === 'openai' ? 'OpenAI' : 'Claude API'
-      this.addLog(`🔍 Analyzing prompt with ${providerName}...`)
-      
-      // Use the appropriate service based on provider
-      const service = this.aiProvider === 'openai' ? openaiService : claudeApiService
-      const plan = await service.generatePlan(prompt)
-      
-      this.addLog('📋 Creating workflow plan...')
-      const workflowPlan = this.createWorkflowFromPlan(plan)
-      
-      this.addLog(`✅ Generated workflow with ${workflowPlan.nodes.length} tasks`)
-      
-      return workflowPlan
-    } catch (error) {
-      this.addLog(`❌ Error: ${error instanceof Error ? error.message : String(error)}`)
-      throw error
+  private createWorkflowFromContent(content: string): WorkflowPlan {
+    // Check if content has workflow markers
+    if (this.hasWorkflowMarkers(content)) {
+      this.addLog('🎯 Detected workflow markers - creating structured DAG')
+      return this.createWorkflowFromMarkers(content)
     }
-  }
-  
-  private async createWorkflowFromAnalysis(analysis: any): Promise<WorkflowPlan> {
-    // Debug log to see what AI analyzed
-    console.log('AI Analysis Result:', JSON.stringify(analysis, null, 2))
     
-    const nodes: TaskNode[] = [{
+    // Otherwise, create simple task-based workflow
+    this.addLog('📝 Creating task-based workflow from content')
+    return this.createSimpleWorkflow(content)
+  }
+  
+  private createSimpleWorkflow(content: string): WorkflowPlan {
+    const nodes: TaskNode[] = []
+    const edges: Array<{ id: string; source: string; target: string }> = []
+    
+    // Add start node
+    nodes.push({
       id: 'start',
       title: 'Start',
       description: 'Workflow start',
@@ -81,299 +51,509 @@ export class WorkflowAI {
       status: 'completed',
       position: { x: 100, y: 100 },
       dependencies: []
-    }]
-    
-    const edges: Array<{ id: string; source: string; target: string }> = []
-    
-    // For parallel execution, arrange nodes by dependency levels
-    if (analysis.executionType === 'parallel') {
-      // Calculate dependency levels for each task
-      const taskLevels = new Map<string, number>()
-      
-      // Helper function to calculate dependency level recursively
-      const calculateLevel = (taskId: string): number => {
-        if (taskLevels.has(taskId)) {
-          return taskLevels.get(taskId)!
-        }
-        
-        const task = analysis.tasks.find((t: any) => t.id === taskId)
-        if (!task) return 0
-        
-        const deps = task.dependencies || ['start']
-        let maxLevel = 0
-        
-        for (const dep of deps) {
-          if (dep === 'start') {
-            maxLevel = Math.max(maxLevel, 0)
-          } else {
-            maxLevel = Math.max(maxLevel, calculateLevel(dep) + 1)
-          }
-        }
-        
-        taskLevels.set(taskId, maxLevel)
-        return maxLevel
-      }
-      
-      // Calculate levels for all tasks
-      for (const task of analysis.tasks) {
-        calculateLevel(task.id)
-      }
-      
-      // Group tasks by level
-      const levelGroups = new Map<number, any[]>()
-      for (const task of analysis.tasks) {
-        const level = taskLevels.get(task.id) || 0
-        if (!levelGroups.has(level)) {
-          levelGroups.set(level, [])
-        }
-        levelGroups.get(level)!.push(task)
-      }
-      
-      // Arrange nodes by level
-      for (const [level, tasks] of levelGroups) {
-        const yPos = 250 + level * 150 // Each level 150px down
-        let xOffset = 100 + (level > 0 ? 50 : 0) // Slight indent for dependent tasks
-        
-        for (const task of tasks) {
-          const node: TaskNode = {
-            id: task.id,
-            title: task.prompt.substring(0, 50) + (task.prompt.length > 50 ? '...' : ''),
-            description: task.prompt,
-            type: 'task',
-            status: 'pending',
-            position: { x: xOffset, y: yPos },
-            duration: 5,
-            dependencies: (task.dependencies && task.dependencies.length > 0) ? task.dependencies : ['start']
-          }
-          nodes.push(node)
-          
-          // Connect based on dependencies
-          for (const dep of node.dependencies) {
-            edges.push({
-              id: `${dep}-${node.id}`,
-              source: dep,
-              target: node.id
-            })
-          }
-          
-          xOffset += 300 // More space between nodes in same level
-        }
-      }
-      
-      // Find leaf tasks (tasks that don't have other tasks depending on them)
-      const leafTasks = analysis.tasks.filter((task: any) => {
-        const taskId = task.id
-        return !analysis.tasks.some((otherTask: any) => 
-          otherTask.dependencies && otherTask.dependencies.includes(taskId)
-        )
-      })
-      
-      // If no specific leaf tasks found, use all tasks (for pure parallel execution)
-      const finalDependencies = leafTasks.length > 0 ? leafTasks.map((t: any) => t.id) : analysis.tasks.map((t: any) => t.id)
-      
-      // Calculate the maximum level to position Complete node below all tasks
-      const maxLevel = Math.max(...Array.from(taskLevels.values()))
-      const completeYPos = 250 + (maxLevel + 1) * 150
-      
-      const endNode: TaskNode = {
-        id: 'end',
-        title: 'Complete',
-        description: 'All tasks completed',
-        type: 'end',
-        status: 'pending',
-        position: { x: 250, y: completeYPos }, // Center horizontally
-        dependencies: finalDependencies
-      }
-      nodes.push(endNode)
-      
-      // Connect only leaf tasks to end
-      for (const taskId of finalDependencies) {
-        edges.push({
-          id: `${taskId}-end`,
-          source: taskId,
-          target: 'end'
-        })
-      }
-    } else {
-      // Sequential execution - arrange vertically
-      let yOffset = 250
-      let prevNodeId = 'start'
-      
-      for (const task of analysis.tasks) {
-        const node: TaskNode = {
-          id: task.id,
-          title: task.prompt.substring(0, 50) + (task.prompt.length > 50 ? '...' : ''),
-          description: task.prompt,
-          type: 'task',
-          status: 'pending',
-          position: { x: 100, y: yOffset },
-          duration: 5,
-          dependencies: task.dependencies || [prevNodeId]
-        }
-        nodes.push(node)
-        
-        edges.push({
-          id: `${prevNodeId}-${node.id}`,
-          source: prevNodeId,
-          target: node.id
-        })
-        
-        prevNodeId = node.id
-        yOffset += 150
-      }
-      
-      const endNode: TaskNode = {
-        id: 'end',
-        title: 'Complete',
-        description: 'All tasks completed',
-        type: 'end',
-        status: 'pending',
-        position: { x: 100, y: yOffset },
-        dependencies: [prevNodeId]
-      }
-      nodes.push(endNode)
-      
-      edges.push({
-        id: `${prevNodeId}-end`,
-        source: prevNodeId,
-        target: 'end'
-      })
-    }
-    
-    // Detect loops from the analysis
-    const loops: LoopConfig[] = []
-    
-    // Check if AI detected any loops
-    if (analysis.loops && analysis.loops.length > 0) {
-      this.addLog(`🔄 Detected ${analysis.loops.length} potential loops`)
-      
-      for (const loopSuggestion of analysis.loops) {
-        const loop: LoopConfig = {
-          id: `loop-${loopSuggestion.startTaskId}-${loopSuggestion.endTaskId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          startTaskId: loopSuggestion.startTaskId,
-          endTaskId: loopSuggestion.endTaskId,
-          condition: loopSuggestion.pattern.includes('test') ? 'until-success' : 'max-attempts',
-          maxAttempts: 3,
-          onFailure: 'continue'
-        }
-        loops.push(loop)
-      }
-    }
-    
-    // Also run our own loop detector
-    const taskNodes = nodes.filter(n => n.type === 'task')
-    const detectedLoops = LoopDetector.detectLoops(taskNodes)
-    
-    // Merge with AI-detected loops (avoiding duplicates)
-    for (const detectedLoop of detectedLoops) {
-      const exists = loops.some(l => 
-        l.startTaskId === detectedLoop.startTaskId && 
-        l.endTaskId === detectedLoop.endTaskId
-      )
-      if (!exists) {
-        loops.push(detectedLoop)
-      }
-    }
-    
-    if (loops.length > 0) {
-      this.addLog(`🔄 Total loops configured: ${loops.length}`)
-    }
-
-    return {
-      id: `workflow-${Date.now()}`,
-      name: `${analysis.executionType === 'parallel' ? 'Parallel' : 'Sequential'} Workflow`,
-      description: 'Auto-generated workflow from prompts',
-      nodes,
-      edges,
-      loops: loops.length > 0 ? loops : undefined,
-      status: 'draft',
-      createdAt: new Date(),
-      estimatedDuration: nodes.length * 5
-    }
-  }
-  
-  
-  private createWorkflowFromPlan(plan: any): WorkflowPlan {
-    // Debug log to see what AI generated
-    console.log('AI Plan Result:', JSON.stringify(plan, null, 2))
-    
-    const nodes: TaskNode[] = [
-      {
-        id: 'start',
-        title: 'Start',
-        description: 'Workflow start',
-        type: 'start',
-        status: 'completed',
-        position: { x: 100, y: 100 },
-        dependencies: []
-      }
-    ]
-    
-    const edges: Array<{ id: string; source: string; target: string }> = []
-    let yOffset = 250
-    
-    for (const task of plan.tasks || []) {
-      const node: TaskNode = {
-        id: task.id,
-        title: task.name,
-        description: task.description,
-        type: 'task',
-        status: 'pending',
-        position: { x: 100, y: yOffset },
-        duration: 5,
-        dependencies: task.dependencies || ['start']
-      }
-      nodes.push(node)
-      
-      // Connect based on dependencies
-      for (const dep of node.dependencies) {
-        edges.push({
-          id: `${dep}-${node.id}`,
-          source: dep,
-          target: node.id
-        })
-      }
-      
-      yOffset += 150
-    }
-    
-    // Find tasks that don't have any other tasks depending on them (leaf tasks)
-    const leafTasks = plan.tasks.filter((task: any) => {
-      const taskId = task.id
-      return !plan.tasks.some((otherTask: any) => 
-        otherTask.dependencies && otherTask.dependencies.includes(taskId)
-      )
     })
     
+    // Extract tasks from content (split by double newlines)
+    const tasks = content.split(/\n\n+/).filter(task => task.trim().length > 0)
+    
+    // Create nodes for each task
+    let yOffset = 250
+    let xOffset = 100
+    const taskNodeIds: string[] = []
+    
+    tasks.forEach((task, index) => {
+      const nodeId = `task${index + 1}`
+      const title = task.trim().substring(0, 50) + (task.trim().length > 50 ? '...' : '')
+      
+      const node: TaskNode = {
+        id: nodeId,
+        title: title,
+        description: task.trim(),
+        type: 'task',
+        status: 'pending',
+        position: { x: xOffset, y: yOffset },
+        duration: 5,
+        dependencies: ['start']
+      }
+      nodes.push(node)
+      taskNodeIds.push(nodeId)
+      
+      // Connect from start (parallel by default)
+      edges.push({
+        id: `start-${nodeId}`,
+        source: 'start',
+        target: nodeId
+      })
+      
+      xOffset += 300
+      if ((index + 1) % 3 === 0) {
+        xOffset = 100
+        yOffset += 150
+      }
+    })
+    
+    // Add end node
+    const endY = yOffset + (taskNodeIds.length % 3 !== 0 ? 150 : 0)
     const endNode: TaskNode = {
       id: 'end',
       title: 'Complete',
       description: 'All tasks completed',
       type: 'end',
       status: 'pending',
-      position: { x: 100, y: yOffset },
-      dependencies: leafTasks.map((t: any) => t.id)
+      position: { x: 250, y: endY },
+      dependencies: taskNodeIds
     }
     nodes.push(endNode)
     
-    // Connect leaf tasks to end
-    for (const leafTask of leafTasks) {
+    // Connect all tasks to end
+    for (const nodeId of taskNodeIds) {
       edges.push({
-        id: `${leafTask.id}-end`,
-        source: leafTask.id,
+        id: `${nodeId}-end`,
+        source: nodeId,
         target: 'end'
       })
     }
     
+    this.addLog(`✅ Created workflow with ${taskNodeIds.length} tasks (parallel execution)`)
+    
     return {
       id: `workflow-${Date.now()}`,
-      name: plan.title || 'Workflow',
-      description: 'Auto-generated workflow',
+      name: 'Task-based Workflow',
+      description: 'Workflow created from task list',
       nodes,
       edges,
       status: 'draft',
       createdAt: new Date(),
-      estimatedDuration: nodes.length * 5
+      estimatedDuration: taskNodeIds.length * 5
     }
   }
+
+  async processLargePrompt(chunks: string[]): Promise<WorkflowPlan> {
+    // Simply join chunks and process without AI
+    const fullContent = chunks.join('\n\n')
+    this.addLog(`📚 Processing ${chunks.length} chunks...`)
+    return this.createWorkflowFromContent(fullContent)
+  }
+  
+  private hasWorkflowMarkers(content: string): boolean {
+    return content.includes('===sequential===') || 
+           content.includes('===parallel===') || 
+           content.includes('===parallel-group===')
+  }
+  
+  private createWorkflowFromMarkers(content: string): WorkflowPlan {
+    const nodes: TaskNode[] = []
+    const edges: Array<{ id: string; source: string; target: string }> = []
+    let nodeIdCounter = 1
+    
+    // Add start node
+    nodes.push({
+      id: 'start',
+      title: 'Start',
+      description: 'Workflow start',
+      type: 'start',
+      status: 'completed',
+      position: { x: 100, y: 100 },
+      dependencies: []
+    })
+    
+    // Parse the content with markers
+    const sections = this.parseMarkerSections(content)
+    const { finalNodes, lastNodeIds } = this.processMarkerSections(sections, nodes, edges, nodeIdCounter)
+    
+    // Calculate end node position
+    let maxY = 100
+    for (const node of finalNodes) {
+      if (node.position && node.position.y > maxY) {
+        maxY = node.position.y
+      }
+    }
+    
+    // Add end node
+    const endNode: TaskNode = {
+      id: 'end',
+      title: 'Complete',
+      description: 'All tasks completed',
+      type: 'end',
+      status: 'pending',
+      position: { x: 250, y: maxY + 150 },
+      dependencies: lastNodeIds
+    }
+    finalNodes.push(endNode)
+    
+    // Connect last nodes to end
+    for (const nodeId of lastNodeIds) {
+      edges.push({
+        id: `${nodeId}-end`,
+        source: nodeId,
+        target: 'end'
+      })
+    }
+    
+    // Check for loops
+    const loops = LoopDetector.detectLoops(finalNodes.filter(n => n.type === 'task'))
+    
+    return {
+      id: `workflow-${Date.now()}`,
+      name: 'Marker-based Workflow',
+      description: 'Workflow created from structure markers',
+      nodes: finalNodes,
+      edges,
+      loops: loops.length > 0 ? loops : undefined,
+      status: 'draft',
+      createdAt: new Date(),
+      estimatedDuration: (finalNodes.length - 2) * 5 // Exclude start/end nodes
+    }
+  }
+  
+  private parseMarkerSections(content: string): any[] {
+    const sections: any[] = []
+    const lines = content.split('\n')
+    let currentSection: any = null
+    let currentContent: string[] = []
+    let unmarkedContent: string[] = []
+    let inParallelGroup = false
+    let parallelGroupContent: string[] = []
+    
+    for (const line of lines) {
+      if (line.trim().startsWith('===')) {
+        const marker = line.trim()
+        
+        if (marker === '===parallel-group===') {
+          // Start collecting parallel group content
+          inParallelGroup = true
+          parallelGroupContent = []
+          currentSection = null
+        } else if (marker === '===end-group===' && inParallelGroup) {
+          // End parallel group and save it
+          sections.push({
+            type: 'parallel-group',
+            content: parallelGroupContent.join('\n'),
+            subsections: []
+          })
+          inParallelGroup = false
+          parallelGroupContent = []
+        } else if (!inParallelGroup) {
+          // Normal section processing
+          // Save unmarked content as parallel section if exists
+          if (!currentSection && unmarkedContent.length > 0 && unmarkedContent.some(l => l.trim())) {
+            sections.push({ 
+              type: 'parallel', 
+              content: unmarkedContent.join('\n').trim(), 
+              subsections: [] 
+            })
+            unmarkedContent = []
+          }
+          
+          // Save previous section if exists
+          if (currentSection && currentContent.length > 0) {
+            currentSection.content = currentContent.join('\n').trim()
+            sections.push(currentSection)
+          }
+          
+          // Start new section
+          if (marker === '===sequential===' || marker === '===parallel===') {
+            currentSection = { type: marker.replace(/=/g, ''), content: '', subsections: [] }
+            currentContent = []
+          } else if (marker === '===end===') {
+            if (currentSection) {
+              currentSection.content = currentContent.join('\n').trim()
+              sections.push(currentSection)
+            }
+            currentSection = null
+            currentContent = []
+          }
+        }
+      } else {
+        // Add line to appropriate content
+        if (inParallelGroup) {
+          parallelGroupContent.push(line)
+        } else if (currentSection) {
+          currentContent.push(line)
+        } else {
+          // Content without markers - save for later
+          unmarkedContent.push(line)
+        }
+      }
+    }
+    
+    // Save last section
+    if (currentSection && currentContent.length > 0) {
+      currentSection.content = currentContent.join('\n').trim()
+      sections.push(currentSection)
+    }
+    
+    // Save any remaining unmarked content as parallel
+    if (unmarkedContent.length > 0 && unmarkedContent.some(l => l.trim())) {
+      sections.push({ 
+        type: 'parallel', 
+        content: unmarkedContent.join('\n').trim(), 
+        subsections: [] 
+      })
+    }
+    
+    this.addLog(`📊 Found ${sections.length} sections total`)
+    for (const section of sections) {
+      this.addLog(`  - Type: ${section.type}, Content length: ${section.content.length}`)
+    }
+    
+    return sections
+  }
+  
+  private processMarkerSections(sections: any[], nodes: TaskNode[], edges: any[], startId: number): { finalNodes: TaskNode[], lastNodeIds: string[] } {
+    let nodeIdCounter = startId
+    let yOffset = 250
+    let lastNodeIds = ['start']
+    const allNodes: TaskNode[] = [...nodes]
+    
+    for (const section of sections) {
+      if (section.type === 'sequential') {
+        // Process sequential tasks
+        const tasks = this.extractTasksFromContent(section.content)
+        let prevNodeId = lastNodeIds[0]
+        const sectionNodeIds: string[] = []
+        
+        for (const task of tasks) {
+          const nodeId = `task${nodeIdCounter++}`
+          const node: TaskNode = {
+            id: nodeId,
+            title: task.title,
+            description: task.description,
+            type: 'task',
+            status: 'pending',
+            position: { x: 100, y: yOffset },
+            duration: 5,
+            dependencies: [prevNodeId]
+          }
+          allNodes.push(node)
+          
+          edges.push({
+            id: `${prevNodeId}-${nodeId}`,
+            source: prevNodeId,
+            target: nodeId
+          })
+          
+          prevNodeId = nodeId
+          sectionNodeIds.push(nodeId)
+          yOffset += 150
+        }
+        
+        lastNodeIds = [prevNodeId]
+        
+      } else if (section.type === 'parallel') {
+        // Process parallel tasks
+        const tasks = this.extractTasksFromContent(section.content)
+        const parallelNodeIds: string[] = []
+        let xOffset = 100
+        
+        for (const task of tasks) {
+          const nodeId = `task${nodeIdCounter++}`
+          const node: TaskNode = {
+            id: nodeId,
+            title: task.title,
+            description: task.description,
+            type: 'task',
+            status: 'pending',
+            position: { x: xOffset, y: yOffset },
+            duration: 5,
+            dependencies: lastNodeIds
+          }
+          allNodes.push(node)
+          
+          // Connect from all previous nodes
+          for (const prevId of lastNodeIds) {
+            edges.push({
+              id: `${prevId}-${nodeId}`,
+              source: prevId,
+              target: nodeId
+            })
+          }
+          
+          parallelNodeIds.push(nodeId)
+          xOffset += 250
+        }
+        
+        lastNodeIds = parallelNodeIds
+        yOffset += 150
+        
+      } else if (section.type === 'parallel-group') {
+        // Process parallel groups (multiple sequential sections in parallel)
+        this.addLog(`🔸 Processing parallel-group with content: ${section.content.substring(0, 100)}...`)
+        const subsections = this.parseGroupSubsections(section.content)
+        const groupLastNodeIds: string[] = []
+        let maxYOffset = yOffset
+        let xOffset = 100
+        
+        for (const subsection of subsections) {
+          this.addLog(`🔍 Processing subsection: ${subsection.substring(0, 50)}...`)
+          const tasks = this.extractTasksFromContent(subsection)
+          this.addLog(`📝 Extracted ${tasks.length} tasks`)
+          let currentY = yOffset
+          
+          // First task in each subsection connects to all previous nodes
+          if (tasks.length > 0) {
+            const firstTask = tasks[0]
+            const firstNodeId = `task${nodeIdCounter++}`
+            const firstNode: TaskNode = {
+              id: firstNodeId,
+              title: firstTask.title,
+              description: firstTask.description,
+              type: 'task',
+              status: 'pending',
+              position: { x: xOffset, y: currentY },
+              duration: 5,
+              dependencies: lastNodeIds
+            }
+            allNodes.push(firstNode)
+            
+            // Connect from all previous nodes to first task
+            for (const prevId of lastNodeIds) {
+              edges.push({
+                id: `${prevId}-${firstNodeId}`,
+                source: prevId,
+                target: firstNodeId
+              })
+            }
+            
+            let prevNodeId = firstNodeId
+            currentY += 150
+            
+            // Process remaining tasks in the subsection
+            for (let i = 1; i < tasks.length; i++) {
+              const task = tasks[i]
+              const nodeId = `task${nodeIdCounter++}`
+              const node: TaskNode = {
+                id: nodeId,
+                title: task.title,
+                description: task.description,
+                type: 'task',
+                status: 'pending',
+                position: { x: xOffset, y: currentY },
+                duration: 5,
+                dependencies: [prevNodeId]
+              }
+              allNodes.push(node)
+              
+              edges.push({
+                id: `${prevNodeId}-${nodeId}`,
+                source: prevNodeId,
+                target: nodeId
+              })
+              
+              prevNodeId = nodeId
+              currentY += 150
+            }
+            
+            groupLastNodeIds.push(prevNodeId)
+          }
+          
+          maxYOffset = Math.max(maxYOffset, currentY)
+          xOffset += 300
+        }
+        
+        lastNodeIds = groupLastNodeIds
+        yOffset = maxYOffset
+      }
+    }
+    
+    return { finalNodes: allNodes, lastNodeIds }
+  }
+  
+  private extractTasksFromContent(content: string): Array<{ title: string, description: string }> {
+    const tasks: Array<{ title: string, description: string }> = []
+    
+    // Split by lines first to handle single-line tasks
+    const lines = content.split('\n').filter(line => line.trim())
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim()
+      // Skip empty lines and marker lines
+      if (!trimmedLine || trimmedLine.startsWith('===')) continue
+      
+      // Check if it's a task line (starts with "Task N:" or similar pattern)
+      const taskMatch = trimmedLine.match(/^(Task\s+\d+:|Step\s+\d+:|[\d.]+\.)\s*(.*)$/i)
+      if (taskMatch) {
+        const taskContent = taskMatch[2].trim()
+        // Only add if there's actual content after the task label
+        if (taskContent) {
+          tasks.push({
+            title: trimmedLine.substring(0, 50) + (trimmedLine.length > 50 ? '...' : ''),
+            description: trimmedLine
+          })
+        }
+      } else {
+        // For non-task lines, treat the whole line as a task
+        tasks.push({
+          title: trimmedLine.substring(0, 50) + (trimmedLine.length > 50 ? '...' : ''),
+          description: trimmedLine
+        })
+      }
+    }
+    
+    // If no tasks found, treat the whole content as one task
+    return tasks.length > 0 ? tasks : [{ title: content.substring(0, 50) + '...', description: content }]
+  }
+  
+  private parseGroupSubsections(content: string): string[] {
+    const subsections: string[] = []
+    const lines = content.split('\n')
+    let currentSubsection: string[] = []
+    let inSubsection = false
+    
+    this.addLog(`🔍 Parsing group content (${lines.length} lines):`)
+    
+    // Check if content has markers
+    const hasMarkers = content.includes('===sequential===')
+    
+    if (hasMarkers) {
+      // Original marker-based parsing
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
+        
+        if (line.trim() === '===sequential===') {
+          this.addLog(`  → Found sequential marker at line ${i}`)
+          inSubsection = true
+          currentSubsection = []
+        } else if (line.trim() === '===end===') {
+          this.addLog(`  → Found end marker at line ${i}`)
+          if (inSubsection && currentSubsection.length > 0) {
+            const subsectionContent = currentSubsection.join('\n').trim()
+            this.addLog(`📌 Found subsection: ${subsectionContent.substring(0, 50)}...`)
+            subsections.push(subsectionContent)
+          }
+          inSubsection = false
+        } else if (inSubsection) {
+          currentSubsection.push(line)
+        }
+      }
+    } else {
+      // Fallback: split by empty lines
+      this.addLog(`  ℹ️ No markers found, splitting by empty lines`)
+      let currentGroup: string[] = []
+      
+      for (const line of lines) {
+        if (line.trim()) {
+          currentGroup.push(line)
+        } else if (currentGroup.length > 0) {
+          const groupContent = currentGroup.join('\n').trim()
+          subsections.push(groupContent)
+          this.addLog(`📌 Found subsection: ${groupContent.substring(0, 50)}...`)
+          currentGroup = []
+        }
+      }
+      
+      // Add last group if exists
+      if (currentGroup.length > 0) {
+        const groupContent = currentGroup.join('\n').trim()
+        subsections.push(groupContent)
+        this.addLog(`📌 Found subsection: ${groupContent.substring(0, 50)}...`)
+      }
+    }
+    
+    this.addLog(`✅ Total subsections found: ${subsections.length}`)
+    return subsections
+  }
+
+  // Note: AI-based methods have been removed as they're no longer needed
+  // The workflow creation is now done entirely without AI
 }

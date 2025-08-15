@@ -48,7 +48,7 @@ npm run test:watch
 3. **Workflow System**
    - **WorkflowAI Service** (`src/renderer/services/workflowAI.ts`): Creates DAGs from prompts without AI
    - **Task Separation**: Tasks are separated by double newlines (`\n\n`)
-   - **Marker-based Structure**: Uses `===sequential===`, `===parallel===`, `===parallel-group===` markers
+   - **Marker-based Structure**: Uses `===parallel===`, `===parallel-group===` markers (sequential is default)
    - **Loop Detection**: Automatic loop detection in DAGs (`src/renderer/services/loopDetector.ts`)
 
 ### Key Features Implementation
@@ -73,7 +73,7 @@ npm run test:watch
 
 ### Task Execution Flow
 1. User enters prompts in PromptsEditor
-2. WorkflowAI creates DAG without AI (marker-based or parallel by default)
+2. WorkflowAI creates DAG without AI (sequential by default, markers for parallel)
 3. User approves workflow plan
 4. executeWorkflowTasks runs tasks respecting dependencies
 5. Resume capability preserves completed task states

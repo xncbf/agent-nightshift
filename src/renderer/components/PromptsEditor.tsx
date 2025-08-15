@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { useStore } from '../store/useStore'
-import { Send, Plus, X, AlertCircle, Upload, ArrowRight, GitBranch, Layers, ChevronLeft } from 'lucide-react'
+import { Send, Plus, AlertCircle, Upload, GitBranch, Layers, ChevronLeft } from 'lucide-react'
 
 export const PromptsEditor: React.FC = () => {
   const { isSubmitting, setIsSubmitting, addJob, jobs, currentPRD, setCurrentPRD, createManualPlan } = useStore()
@@ -52,7 +52,7 @@ export const PromptsEditor: React.FC = () => {
     reader.readAsText(file)
   }
 
-  const insertMarker = (type: 'sequential' | 'parallel' | 'parallel-group' | 'end' | 'end-group') => {
+  const insertMarker = (type: 'parallel' | 'parallel-group' | 'end' | 'end-group') => {
     if (!textareaRef.current) return
     
     const textarea = textareaRef.current
@@ -62,14 +62,11 @@ export const PromptsEditor: React.FC = () => {
     
     let markerText = ''
     switch (type) {
-      case 'sequential':
-        markerText = '\n\n===sequential===\n'
-        break
       case 'parallel':
         markerText = '\n\n===parallel===\n'
         break
       case 'parallel-group':
-        markerText = '\n\n===parallel-group===\n\n  ===sequential===\n  Task 1: \n  Task 2: \n  ===end===\n\n  ===sequential===\n  Task 1: \n  Task 2: \n  ===end===\n\n===end-group===\n'
+        markerText = '\n\n===parallel-group===\n\n  Task 1: \n  Task 2: \n\n  Task 3: \n  Task 4: \n\n===end-group===\n'
         break
       case 'end':
         markerText = '\n===end===\n\n'
@@ -106,7 +103,7 @@ export const PromptsEditor: React.FC = () => {
           <li>• <strong>Separate tasks with double newlines</strong> for large prompts</li>
         </ul>
         <p className="text-sm text-gray-500 mt-2">
-          Tasks will be arranged based on your structure markers (parallel by default).
+          Tasks will be arranged sequentially by default. Use markers for parallel execution.
         </p>
       </div>
 
@@ -123,15 +120,6 @@ export const PromptsEditor: React.FC = () => {
       
       <div className="mb-2 flex items-center gap-2 flex-wrap">
         <span className="text-xs text-gray-500">Workflow structure:</span>
-        <button
-          onClick={() => insertMarker('sequential')}
-          className="px-2 py-1 text-xs rounded flex items-center gap-1 transition-colors hover:bg-gray-700"
-          style={{ backgroundColor: 'var(--color-nightshift-darker)', border: '1px solid var(--color-nightshift-accent)' }}
-          title="Tasks run one after another"
-        >
-          <ArrowRight className="w-3 h-3" />
-          Sequential
-        </button>
         <button
           onClick={() => insertMarker('parallel')}
           className="px-2 py-1 text-xs rounded flex items-center gap-1 transition-colors hover:bg-gray-700"

@@ -214,6 +214,8 @@ const WorkflowDAGInner: React.FC<WorkflowDAGProps> = ({
           size={1}
         />
         <MiniMap 
+          pannable={true}
+          zoomable={true}
           style={{
             backgroundColor: 'var(--color-nightshift-darker)',
             border: '1px solid var(--color-nightshift-light)',

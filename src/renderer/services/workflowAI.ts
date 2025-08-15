@@ -49,17 +49,18 @@ export class WorkflowAI {
       description: 'Workflow start',
       type: 'start',
       status: 'completed',
-      position: { x: 100, y: 100 },
+      position: { x: 250, y: 100 },
       dependencies: []
     })
     
     // Extract tasks from content (split by double newlines)
     const tasks = content.split(/\n\n+/).filter(task => task.trim().length > 0)
     
-    // Create nodes for each task
+    // Create nodes for each task (sequential by default)
     let yOffset = 250
-    let xOffset = 100
+    const xPosition = 250
     const taskNodeIds: string[] = []
+    let previousNodeId = 'start'
     
     tasks.forEach((task, index) => {
       const nodeId = `task${index + 1}`
@@ -71,50 +72,53 @@ export class WorkflowAI {
         description: task.trim(),
         type: 'task',
         status: 'pending',
-        position: { x: xOffset, y: yOffset },
+        position: { x: xPosition, y: yOffset },
         duration: 5,
-        dependencies: ['start']
+        dependencies: [previousNodeId]
       }
       nodes.push(node)
       taskNodeIds.push(nodeId)
       
-      // Connect from start (parallel by default)
+      // Connect from previous node (sequential)
       edges.push({
-        id: `start-${nodeId}`,
-        source: 'start',
+        id: `${previousNodeId}-${nodeId}`,
+        source: previousNodeId,
         target: nodeId
       })
       
-      xOffset += 300
-      if ((index + 1) % 3 === 0) {
-        xOffset = 100
-        yOffset += 150
-      }
+      previousNodeId = nodeId
+      yOffset += 150
     })
     
     // Add end node
-    const endY = yOffset + (taskNodeIds.length % 3 !== 0 ? 150 : 0)
     const endNode: TaskNode = {
       id: 'end',
       title: 'Complete',
       description: 'All tasks completed',
       type: 'end',
       status: 'pending',
-      position: { x: 250, y: endY },
-      dependencies: taskNodeIds
+      position: { x: xPosition, y: yOffset },
+      dependencies: previousNodeId ? [previousNodeId] : []
     }
     nodes.push(endNode)
     
-    // Connect all tasks to end
-    for (const nodeId of taskNodeIds) {
+    // Connect last task to end
+    if (previousNodeId !== 'start') {
       edges.push({
-        id: `${nodeId}-end`,
-        source: nodeId,
+        id: `${previousNodeId}-end`,
+        source: previousNodeId,
+        target: 'end'
+      })
+    } else {
+      // If no tasks, connect start directly to end
+      edges.push({
+        id: 'start-end',
+        source: 'start',
         target: 'end'
       })
     }
     
-    this.addLog(`✅ Created workflow with ${taskNodeIds.length} tasks (parallel execution)`)
+    this.addLog(`✅ Created workflow with ${taskNodeIds.length} tasks (sequential execution)`)
     
     return {
       id: `workflow-${Date.now()}`,
@@ -256,10 +260,7 @@ export class WorkflowAI {
             currentSection = { type: marker.replace(/=/g, ''), content: '', subsections: [] }
             currentContent = []
           } else if (marker === '===end===') {
-            if (currentSection) {
-              currentSection.content = currentContent.join('\n').trim()
-              sections.push(currentSection)
-            }
+            // Don't push the section again, it was already pushed above
             currentSection = null
             currentContent = []
           }
@@ -307,40 +308,7 @@ export class WorkflowAI {
     const allNodes: TaskNode[] = [...nodes]
     
     for (const section of sections) {
-      if (section.type === 'sequential') {
-        // Process sequential tasks
-        const tasks = this.extractTasksFromContent(section.content)
-        let prevNodeId = lastNodeIds[0]
-        const sectionNodeIds: string[] = []
-        
-        for (const task of tasks) {
-          const nodeId = `task${nodeIdCounter++}`
-          const node: TaskNode = {
-            id: nodeId,
-            title: task.title,
-            description: task.description,
-            type: 'task',
-            status: 'pending',
-            position: { x: 100, y: yOffset },
-            duration: 5,
-            dependencies: [prevNodeId]
-          }
-          allNodes.push(node)
-          
-          edges.push({
-            id: `${prevNodeId}-${nodeId}`,
-            source: prevNodeId,
-            target: nodeId
-          })
-          
-          prevNodeId = nodeId
-          sectionNodeIds.push(nodeId)
-          yOffset += 150
-        }
-        
-        lastNodeIds = [prevNodeId]
-        
-      } else if (section.type === 'parallel') {
+      if (section.type === 'parallel') {
         // Process parallel tasks
         const tasks = this.extractTasksFromContent(section.content)
         const parallelNodeIds: string[] = []

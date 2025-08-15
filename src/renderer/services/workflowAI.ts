@@ -462,32 +462,19 @@ export class WorkflowAI {
   private extractTasksFromContent(content: string): Array<{ title: string, description: string }> {
     const tasks: Array<{ title: string, description: string }> = []
     
-    // Split by lines first to handle single-line tasks
-    const lines = content.split('\n').filter(line => line.trim())
+    // Split by double newlines to separate tasks
+    const sections = content.split(/\n\n+/).filter(s => s.trim())
     
-    for (const line of lines) {
-      const trimmedLine = line.trim()
-      // Skip empty lines and marker lines
-      if (!trimmedLine || trimmedLine.startsWith('===')) continue
+    for (const section of sections) {
+      const trimmedSection = section.trim()
+      // Skip empty sections and marker lines
+      if (!trimmedSection || trimmedSection.startsWith('===')) continue
       
-      // Check if it's a task line (starts with "Task N:" or similar pattern)
-      const taskMatch = trimmedLine.match(/^(Task\s+\d+:|Step\s+\d+:|[\d.]+\.)\s*(.*)$/i)
-      if (taskMatch) {
-        const taskContent = taskMatch[2].trim()
-        // Only add if there's actual content after the task label
-        if (taskContent) {
-          tasks.push({
-            title: trimmedLine.substring(0, 50) + (trimmedLine.length > 50 ? '...' : ''),
-            description: trimmedLine
-          })
-        }
-      } else {
-        // For non-task lines, treat the whole line as a task
-        tasks.push({
-          title: trimmedLine.substring(0, 50) + (trimmedLine.length > 50 ? '...' : ''),
-          description: trimmedLine
-        })
-      }
+      // Each section is a task
+      tasks.push({
+        title: trimmedSection.substring(0, 50) + (trimmedSection.length > 50 ? '...' : ''),
+        description: trimmedSection
+      })
     }
     
     // If no tasks found, treat the whole content as one task
